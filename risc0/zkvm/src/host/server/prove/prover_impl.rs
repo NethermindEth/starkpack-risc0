@@ -60,7 +60,9 @@ where
     H: Hal<Field = BabyBear, Elem = Elem, ExtElem = ExtElem>,
     C: CircuitHal<H>,
 {
-    fn prove_session(&self, ctx: &VerifierContext, session: &Session) -> Result<Receipt> {
+    fn prove_session(&self, ctx: &VerifierContext, session: Vec<&Session>) -> Result<Receipt> {
+        let session = session.first().map(|&session| session).unwrap();
+        /* Here we start changing the code to introduce StarkPack */
         log::info!("prove_session: {}", self.name);
         let mut segments = Vec::new();
         for segment_ref in session.segments.iter() {

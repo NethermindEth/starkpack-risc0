@@ -288,7 +288,7 @@ impl Server {
         let opts: ProverOpts = request.opts.ok_or(malformed_err())?.into();
         let prover = get_prover_server(&opts)?;
         let ctx = VerifierContext::default();
-        let receipt = prover.prove(env, &ctx, image)?;
+        let receipt = prover.prove(vec![env], &ctx, image)?;
 
         let receipt_bytes = bincode::serialize(&receipt)?;
         let asset = pb::Asset::from_bytes(

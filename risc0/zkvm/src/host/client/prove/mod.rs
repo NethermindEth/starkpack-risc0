@@ -80,16 +80,16 @@ pub trait Prover {
     /// Prove the specified [MemoryImage].
     fn prove(
         &self,
-        env: ExecutorEnv<'_>,
+        envs: Vec<ExecutorEnv<'_>>,
         ctx: &VerifierContext,
         opts: &ProverOpts,
         image: MemoryImage,
     ) -> Result<Receipt>;
 
     /// Prove the specified ELF binary.
-    fn prove_elf(&self, env: ExecutorEnv<'_>, elf: &[u8]) -> Result<Receipt> {
+    fn prove_elf(&self, envs: Vec<ExecutorEnv<'_>>, elf: &[u8]) -> Result<Receipt> {
         self.prove_elf_with_ctx(
-            env,
+            envs,
             &VerifierContext::default(),
             elf,
             &ProverOpts::default(),
@@ -99,14 +99,14 @@ pub trait Prover {
     /// Prove the specified [MemoryImage] with the specified [VerifierContext].
     fn prove_elf_with_ctx(
         &self,
-        env: ExecutorEnv<'_>,
+        envs: Vec<ExecutorEnv<'_>>,
         ctx: &VerifierContext,
         elf: &[u8],
         opts: &ProverOpts,
     ) -> Result<Receipt> {
         let program = Program::load_elf(elf, GUEST_MAX_MEM as u32)?;
         let image = MemoryImage::new(&program, PAGE_SIZE as u32)?;
-        self.prove(env, ctx, opts, image)
+        self.prove(envs, ctx, opts, image)
     }
 }
 

@@ -40,7 +40,7 @@ use crate::{
 pub struct DevModeProver;
 
 impl ProverServer for DevModeProver {
-    fn prove_session(&self, _ctx: &VerifierContext, session: &Session) -> Result<Receipt> {
+    fn prove_session(&self, _ctx: &VerifierContext, session: Vec<&Session>) -> Result<Receipt> {
         eprintln!(
             "WARNING: Proving in dev mode does not generate a valid receipt. \
             Receipts generated from this process are invalid and should never be used in production."
@@ -52,6 +52,7 @@ impl ProverServer for DevModeProver {
             )
         }
 
+        let session = session.first().unwrap();
         Ok(Receipt::new(InnerReceipt::Fake, session.journal.clone()))
     }
 

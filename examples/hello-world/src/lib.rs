@@ -26,19 +26,23 @@ use risc0_zkvm::{
 // The factors a and b are kept secret.
 
 // Compute the product a*b inside the zkVM
-pub fn multiply(a: u64, b: u64) -> (Receipt, u64) {
-    let env = ExecutorEnv::builder()
-        // Send a & b to the guest
-        .add_input(&to_vec(&a).unwrap())
-        .add_input(&to_vec(&b).unwrap())
-        .build()
-        .unwrap();
+pub fn multiply(pairs: Vec<(u64, u64)>) -> (Receipt, u64) {
+    let envs: Vec<ExecutorEnv<'_>> = pairs
+        .into_iter()
+        .map(|(a, b)| {
+            ExecutorEnv::builder()
+                .add_input(&to_vec(&a).unwrap())
+                .add_input(&to_vec(&b).unwrap())
+                .build()
+                .unwrap()
+        })
+        .collect();
 
     // Obtain the default prover.
     let prover = default_prover();
 
     // Produce a receipt by proving the specified ELF binary.
-    let receipt = prover.prove_elf(env, MULTIPLY_ELF).unwrap();
+    let receipt = prover.prove_elf(envs, MULTIPLY_ELF).unwrap();
 
     // Extract journal of receipt (i.e. output c, where c = a * b)
     let c: u64 = from_slice(&receipt.journal).expect(
@@ -59,7 +63,7 @@ mod tests {
     fn test_hello_world() {
         const TEST_FACTOR_ONE: u64 = 17;
         const TEST_FACTOR_TWO: u64 = 23;
-        let (_, result) = multiply(17, 23);
+        let (_, result) = multiply(vec![(17, 23)]);
         assert_eq!(
             result,
             TEST_FACTOR_ONE * TEST_FACTOR_TWO,

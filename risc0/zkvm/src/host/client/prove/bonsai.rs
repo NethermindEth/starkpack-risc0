@@ -42,11 +42,12 @@ impl Prover for BonsaiProver {
 
     fn prove(
         &self,
-        env: ExecutorEnv<'_>,
+        envs: Vec<ExecutorEnv<'_>>,
         _ctx: &VerifierContext,
         _opts: &ProverOpts,
         image: MemoryImage,
     ) -> Result<Receipt> {
+        let env = envs.first().map(|env| env.to_owned()).unwrap();
         let client = Client::from_env()?;
 
         // upload the image

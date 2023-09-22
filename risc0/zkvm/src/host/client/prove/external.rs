@@ -40,12 +40,13 @@ impl ExternalProver {
 impl Prover for ExternalProver {
     fn prove(
         &self,
-        env: ExecutorEnv<'_>,
+        envs: Vec<ExecutorEnv<'_>>,
         ctx: &VerifierContext,
         opts: &ProverOpts,
         image: MemoryImage,
     ) -> Result<Receipt> {
         log::debug!("Launching {}", &self.r0vm_path.to_string_lossy());
+        let env = envs.first().map(|env| env.to_owned()).unwrap();
 
         let image_id = image.compute_id();
         let client = ApiClient::new_sub_process(&self.r0vm_path)?;

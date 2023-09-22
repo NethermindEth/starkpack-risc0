@@ -36,12 +36,12 @@ impl LocalProver {
 impl Prover for LocalProver {
     fn prove(
         &self,
-        env: ExecutorEnv<'_>,
+        envs: Vec<ExecutorEnv<'_>>,
         ctx: &VerifierContext,
         opts: &ProverOpts,
         image: MemoryImage,
     ) -> Result<Receipt> {
-        get_prover_server(opts)?.prove(env, ctx, image)
+        get_prover_server(opts)?.prove(envs, ctx, image)
     }
 
     fn get_name(&self) -> String {

@@ -51,34 +51,39 @@ pub trait ProverServer {
     /// Prove the specified [MemoryImage].
     fn prove(
         &self,
-        env: ExecutorEnv<'_>,
+        envs: Vec<ExecutorEnv<'_>>,
         ctx: &VerifierContext,
         image: MemoryImage,
     ) -> Result<Receipt> {
-        let mut exec = Executor::new(env, image)?;
-        let session = exec.run()?;
-        self.prove_session(ctx, &session)
+        let mut session = Vec::new();
+        for env in envs {
+            let mut exec = Executor::new(env, image.clone())?;
+            let sub_session = exec.run()?;
+            session.push(sub_session);
+        }
+        let session = session.iter().map(|sub| sub).collect();
+        self.prove_session(ctx, session)
     }
 
     /// Prove the specified ELF binary.
-    fn prove_elf(&self, env: ExecutorEnv<'_>, elf: &[u8]) -> Result<Receipt> {
-        self.prove_elf_with_ctx(env, &VerifierContext::default(), elf)
+    fn prove_elf(&self, envs: Vec<ExecutorEnv<'_>>, elf: &[u8]) -> Result<Receipt> {
+        self.prove_elf_with_ctx(envs, &VerifierContext::default(), elf)
     }
 
     /// Prove the specified [MemoryImage] using the specified [VerifierContext].
     fn prove_elf_with_ctx(
         &self,
-        env: ExecutorEnv<'_>,
+        envs: Vec<ExecutorEnv<'_>>,
         ctx: &VerifierContext,
         elf: &[u8],
     ) -> Result<Receipt> {
         let program = Program::load_elf(elf, GUEST_MAX_MEM as u32)?;
         let image = MemoryImage::new(&program, PAGE_SIZE as u32)?;
-        self.prove(env, ctx, image)
+        self.prove(envs, ctx, image)
     }
 
     /// Prove the specified [Session].
-    fn prove_session(&self, ctx: &VerifierContext, session: &Session) -> Result<Receipt>;
+    fn prove_session(&self, ctx: &VerifierContext, session: Vec<&Session>) -> Result<Receipt>;
 
     /// Prove the specified [Segment].
     fn prove_segment(&self, ctx: &VerifierContext, segment: &Segment) -> Result<SegmentReceipt>;
@@ -105,7 +110,7 @@ impl Session {
     /// For each segment, call [Segment::prove] and collect the receipts.
     pub fn prove(&self) -> Result<Receipt> {
         let prover = get_prover_server(&ProverOpts::default())?;
-        prover.prove_session(&VerifierContext::default(), self)
+        prover.prove_session(&VerifierContext::default(), vec![self])
     }
 }
 
