@@ -105,8 +105,7 @@ where
 
         let ios = Vec::new();
         let machines = Vec::new();
-        let executors = Vec::new();
-        //let loaders = Vec::new();
+        let adapters = Vec::new();
         for segment in segments.iter() {
             let io: Vec<Elem> = segment.prepare_globals();
             ios.push(io);
@@ -117,15 +116,16 @@ where
             let loader = Loader::new();
             loader.load(|chunk, fini| executor.step(chunk, fini))?;
             executor.finalize();
-            executors.push(executor);
+            let mut adapter = ProveAdapter::new(&mut executor);
+            adapters.push(adapter);
         }
-        let mut adapter = ProveAdapter::new(&mut executors);
+
         let mut prover: risc0_zkp::prove::Prover<'_, H> =
             risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
-
-        adapter.execute(prover.iop());
-
-        prover.set_po2(adapter.po2() as usize);
+        for adaptor in adapters.iter() {
+            adapter.execute(prover.iop());
+        }
+        prover.set_po2(adapters[0].po2() as usize);
 
         prover.commit_group(
             REGISTER_GROUP_CODE,
@@ -135,7 +135,9 @@ where
             REGISTER_GROUP_DATA,
             hal.copy_from_elem("data", &adapter.get_data().as_slice()),
         );
-        adapter.accumulate(prover.iop());
+        for adaptor in adapters.iter() {
+            adapter.accumulate(prover.iop());
+        }
         prover.commit_group(
             REGISTER_GROUP_ACCUM,
             hal.copy_from_elem("accum", &adapter.get_accum().as_slice()),
