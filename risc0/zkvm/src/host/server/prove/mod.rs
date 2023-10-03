@@ -86,7 +86,11 @@ pub trait ProverServer {
     fn prove_session(&self, ctx: &VerifierContext, session: Vec<&Session>) -> Result<Receipt>;
 
     /// Prove the specified [Segment].
-    fn prove_segment(&self, ctx: &VerifierContext, segment: &Segment) -> Result<SegmentReceipt>;
+    fn prove_segment(
+        &self,
+        ctx: &VerifierContext,
+        segment: Vec<&Segment>,
+    ) -> Result<SegmentReceipt>;
 
     /// Return the peak memory usage that this [ProverServer] has experienced.
     fn get_peak_memory_usage(&self) -> usize;

@@ -60,50 +60,68 @@ where
     H: Hal<Field = BabyBear, Elem = Elem, ExtElem = ExtElem>,
     C: CircuitHal<H>,
 {
-    fn prove_session(&self, ctx: &VerifierContext, session: Vec<&Session>) -> Result<Receipt> {
-        let session = session.first().map(|&session| session).unwrap();
+    fn prove_session(&self, ctx: &VerifierContext, sessions: Vec<&Session>) -> Result<Receipt> {
+        let session0 = sessions.first().map(|&session| session).unwrap();
         /* Here we start changing the code to introduce StarkPack */
         log::info!("prove_session: {}", self.name);
         let mut segments = Vec::new();
-        for segment_ref in session.segments.iter() {
-            let segment = segment_ref.resolve()?;
-            for hook in &session.hooks {
-                hook.on_pre_prove_segment(&segment);
+        for (i, segment_ref) in session0.segments.iter().enumerate() {
+            let segment_vec = sessions
+                .iter()
+                .map(|&session| session.segments[i].resolve())
+                .collect();
+            for hook in &session0.hooks {
+                hook.on_pre_prove_segment(&segment_vec[0]);
             }
-            segments.push(self.prove_segment(ctx, &segment)?);
-            for hook in &session.hooks {
-                hook.on_post_prove_segment(&segment);
+            segments.push(self.prove_segment(ctx, &segment_vec)?);
+            for hook in &session0.hooks {
+                hook.on_post_prove_segment(&segment_vec[0]);
             }
         }
         let inner = InnerReceipt::Flat(SegmentReceipts(segments));
+        //we will need to modify the journal as we have pub data of multiple traces
         let receipt = Receipt::new(inner, session.journal.clone());
+
         let image_id = session.segments[0].resolve()?.pre_image.compute_id();
         receipt.verify_with_context(ctx, image_id)?;
         Ok(receipt)
     }
 
-    fn prove_segment(&self, ctx: &VerifierContext, segment: &Segment) -> Result<SegmentReceipt> {
+    fn prove_segment(
+        &self,
+        ctx: &VerifierContext,
+        segments: Vec<&Segment>,
+    ) -> Result<SegmentReceipt> {
         use risc0_zkp::prove::executor::Executor;
 
         log::info!(
             "prove_segment[{}]: po2: {}, insn_cycles: {}",
-            segment.index,
-            segment.po2,
-            segment.insn_cycles,
+            segments[0].index,
+            segments[0].po2,
+            segments[0].insn_cycles,
         );
         let (hal, circuit_hal) = (self.hal_pair.hal.as_ref(), &self.hal_pair.circuit_hal);
         let hashfn = &hal.get_hash_suite().name;
 
-        let io = segment.prepare_globals();
-        let machine = MachineContext::new(segment);
-        let mut executor = Executor::new(&CIRCUIT, machine, segment.po2, segment.po2, &io);
+        let ios = Vec::new();
+        let machines = Vec::new();
+        let executors = Vec::new();
+        //let loaders = Vec::new();
+        for segment in segments.iter() {
+            let io: Vec<Elem> = segment.prepare_globals();
+            ios.push(io);
+            let machine = MachineContext::new(segment);
+            machines.push(machine);
+            let mut executor = Executor::new(&CIRCUIT, machine, segment.po2, segment.po2, &io);
 
-        let loader = Loader::new();
-        loader.load(|chunk, fini| executor.step(chunk, fini))?;
-        executor.finalize();
-
-        let mut adapter = ProveAdapter::new(&mut executor);
-        let mut prover = risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
+            let loader = Loader::new();
+            loader.load(|chunk, fini| executor.step(chunk, fini))?;
+            executor.finalize();
+            executors.push(executor);
+        }
+        let mut adapter = ProveAdapter::new(&mut executors);
+        let mut prover: risc0_zkp::prove::Prover<'_, H> =
+            risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
 
         adapter.execute(prover.iop());
 

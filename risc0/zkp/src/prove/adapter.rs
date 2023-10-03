@@ -36,7 +36,7 @@ where
     C: 'static + CircuitProveDef<F>,
     S: CircuitStepHandler<F::Elem>,
 {
-    exec: &'a mut Executor<F, C, S>,
+    execs: Vec<&'a mut Executor<F, C, S>>,
     mix: CpuBuffer<F::Elem>,
     accum: CpuBuffer<F::Elem>,
     steps: usize,
@@ -48,10 +48,10 @@ where
     C: 'static + CircuitProveDef<F>,
     CS: CircuitStepHandler<F::Elem>,
 {
-    pub fn new(exec: &'a mut Executor<F, C, CS>) -> Self {
-        let steps = exec.steps;
+    pub fn new(execs: Vec<&'a mut Executor<F, C, CS>>) -> Self {
+        let steps = execs[0].steps;
         ProveAdapter {
-            exec,
+            execs,
             mix: CpuBuffer::from(Vec::new()),
             accum: CpuBuffer::from(Vec::new()),
             steps,
@@ -59,14 +59,16 @@ where
     }
 
     pub fn get_taps(&self) -> &'static TapSet<'static> {
-        self.exec.circuit.get_taps()
+        self.execs[0].circuit.get_taps()
     }
 
     /// Perform initial 'execution' setting code + data.
     /// Additionally, write any 'results' as needed.
     pub fn execute(&mut self, iop: &mut WriteIOP<F>) {
-        iop.write_field_elem_slice(&self.exec.io.as_slice());
-        iop.write_u32_slice(&[self.exec.po2 as u32]);
+        for exec in self.execs.iter() {
+            iop.write_field_elem_slice(&exec.io.as_slice());
+            iop.write_u32_slice(&[exec.po2 as u32]);
+        }
     }
 
     fn compute_accum(&mut self) {
