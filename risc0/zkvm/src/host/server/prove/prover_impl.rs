@@ -27,7 +27,7 @@ use risc0_zkp::{
 
 use super::{exec::MachineContext, HalPair, ProverServer};
 use crate::{
-    host::{receipt::SegmentReceipts, CIRCUIT},
+    host::{receipt::SegmentReceipts, server::session::PackSession, CIRCUIT},
     InnerReceipt, Loader, Receipt, Segment, SegmentReceipt, Session, VerifierContext,
 };
 
@@ -60,29 +60,36 @@ where
     H: Hal<Field = BabyBear, Elem = Elem, ExtElem = ExtElem>,
     C: CircuitHal<H>,
 {
-    fn prove_session(&self, ctx: &VerifierContext, sessions: Vec<&Session>) -> Result<Receipt> {
-        let session0 = sessions.first().map(|&session| session).unwrap();
+    fn prove_session(&self, ctx: &VerifierContext, pack_session: PackSession) -> Result<Receipt> {
         /* Here we start changing the code to introduce StarkPack */
         log::info!("prove_session: {}", self.name);
+        let pack_segments = pack_session.resolve_packed_segments()?;
         let mut segments = Vec::new();
-        for (i, segment_ref) in session0.segments.iter().enumerate() {
-            let segment_vec = sessions
-                .iter()
-                .map(|&session| session.segments[i].resolve())
-                .collect();
-            for hook in &session0.hooks {
-                hook.on_pre_prove_segment(&segment_vec[0]);
-            }
-            segments.push(self.prove_segment(ctx, &segment_vec)?);
-            for hook in &session0.hooks {
-                hook.on_post_prove_segment(&segment_vec[0]);
-            }
+        for pack_segment in pack_segments {
+            segments.push(self.prove_segment(ctx, pack_segment)?);
         }
+        // explicitly avoid hooks
+        // for (i, segment_ref) in session0.segments.iter().enumerate() {
+        //     let segment_vec = sessions
+        //         .iter()
+        //         .map(|&session| session.segments[i].resolve())
+        //         .collect();
+        //     for hook in &session0.hooks {
+        //         hook.on_pre_prove_segment(&pack_session.joined_segments.first());
+        //     }
+        //     segments.push(self.prove_segment(ctx, &pack_session.resolve_packed_segments())?);
+        //     for hook in &session0.hooks {
+        //         hook.on_post_prove_segment(&segment_vec[0]);
+        //     }
+        // }
         let inner = InnerReceipt::Flat(SegmentReceipts(segments));
         //we will need to modify the journal as we have pub data of multiple traces
-        let receipt = Receipt::new(inner, session.journal.clone());
+        let receipt = Receipt::new(inner, pack_session.pack_journals[0].clone());
 
-        let image_id = session.segments[0].resolve()?.pre_image.compute_id();
+        let image_id = pack_session.pack_segments[0][0]
+            .resolve()?
+            .pre_image
+            .compute_id();
         receipt.verify_with_context(ctx, image_id)?;
         Ok(receipt)
     }

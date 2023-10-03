@@ -45,6 +45,8 @@ use crate::{
     VerifierContext,
 };
 
+use super::session::PackSession;
+
 /// A ProverServer can execute a given [MemoryImage] and produce a [Receipt]
 /// that can be used to verify correct computation.
 pub trait ProverServer {
@@ -55,14 +57,8 @@ pub trait ProverServer {
         ctx: &VerifierContext,
         image: MemoryImage,
     ) -> Result<Receipt> {
-        let mut session = Vec::new();
-        for env in envs {
-            let mut exec = Executor::new(env, image.clone())?;
-            let sub_session = exec.run()?;
-            session.push(sub_session);
-        }
-        let session = session.iter().map(|sub| sub).collect();
-        self.prove_session(ctx, session)
+        let pack_session = PackSession::new_from_envs(envs, image)?;
+        self.prove_session(ctx, pack_session)
     }
 
     /// Prove the specified ELF binary.
@@ -83,7 +79,7 @@ pub trait ProverServer {
     }
 
     /// Prove the specified [Session].
-    fn prove_session(&self, ctx: &VerifierContext, session: Vec<&Session>) -> Result<Receipt>;
+    fn prove_session(&self, ctx: &VerifierContext, pack_session: PackSession) -> Result<Receipt>;
 
     /// Prove the specified [Segment].
     fn prove_segment(
