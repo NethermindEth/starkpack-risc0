@@ -41,11 +41,11 @@ use risc0_zkvm_platform::{memory::GUEST_MAX_MEM, PAGE_SIZE, WORD_SIZE};
 
 use self::{dev_mode::DevModeProver, prover_impl::ProverImpl};
 use crate::{
-    is_dev_mode, Executor, ExecutorEnv, ProverOpts, Receipt, Segment, SegmentReceipt, Session,
+    is_dev_mode, ExecutorEnv, ProverOpts, Receipt, Segment, SegmentReceipt, Session,
     VerifierContext,
 };
 
-use super::session::PackSession;
+use super::packer::PackSession;
 
 /// A ProverServer can execute a given [MemoryImage] and produce a [Receipt]
 /// that can be used to verify correct computation.
@@ -109,8 +109,19 @@ where
 impl Session {
     /// For each segment, call [Segment::prove] and collect the receipts.
     pub fn prove(&self) -> Result<Receipt> {
-        let prover = get_prover_server(&ProverOpts::default())?;
-        prover.prove_session(&VerifierContext::default(), vec![self])
+        unimplemented!();
+        // let prover = get_prover_server(&ProverOpts::default())?;
+        // let segments = self.segments;
+        // let journal = self.journal.clone();
+        // let exit_code = self.exit_code;
+        // let hooks = self.hooks;
+        // let pack_session = PackSession {
+        //     pack_segments: vec![segments],
+        //     pack_journals: vec![journal],
+        //     pack_exit_codes: vec![exit_code],
+        //     pack_hooks: vec![Some(hooks)],
+        // };
+        // prover.prove_session(&VerifierContext::default(), pack_session)
     }
 }
 
@@ -118,7 +129,7 @@ impl Segment {
     /// Call the ZKP system to produce a [SegmentReceipt].
     pub fn prove(&self, ctx: &VerifierContext) -> Result<SegmentReceipt> {
         let prover = get_prover_server(&ProverOpts::default())?;
-        prover.prove_segment(ctx, self)
+        prover.prove_segment(ctx, vec![self])
     }
 
     fn prepare_globals(&self) -> Vec<Elem> {

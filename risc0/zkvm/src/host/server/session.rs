@@ -27,10 +27,7 @@ use risc0_binfmt::MemoryImage;
 use risc0_zkp::core::digest::Digest;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    host::{receipt::ExitCode, server::exec::executor::SyscallRecord},
-    Executor, ExecutorEnv,
-};
+use crate::host::{receipt::ExitCode, server::exec::executor::SyscallRecord};
 
 #[derive(Clone, Default, Serialize, Deserialize, Debug)]
 pub struct PageFaults {
@@ -38,60 +35,6 @@ pub struct PageFaults {
     pub(crate) writes: BTreeSet<u32>,
 }
 
-pub struct PackSession {
-    pub pack_segments: Vec<Vec<Box<dyn SegmentRef>>>,
-    pub pack_journals: Vec<Vec<u8>>,
-    pub pack_exit_codes: Vec<ExitCode>,
-    pub pack_hooks: Vec<Option<Vec<Box<dyn SessionEvents>>>>,
-}
-
-impl PackSession {
-    pub fn new_from_envs(envs: Vec<ExecutorEnv<'_>>, image: MemoryImage) -> Result<Self> {
-        assert!(envs.is_empty() == false, "No execution enviroments found");
-        let mut sessions = Vec::new();
-        for env in envs {
-            let mut exec = Executor::new(env, image.clone())?;
-            let sub_session = exec.run()?;
-            sessions.push(sub_session);
-        }
-        Ok(PackSession::join_segments(sessions))
-    }
-
-    pub fn join_segments(sessions: Vec<Session>) -> PackSession {
-        let mut pack_segments = Vec::<Vec<_>>::new();
-        let mut pack_journals = Vec::new();
-        let mut pack_exit_codes = Vec::new();
-        let mut pack_hooks = Vec::new();
-        for session in sessions {
-            for (i, &segment) in session.segments.iter().enumerate() {
-                pack_segments[i].push(segment);
-            }
-            pack_journals.push(session.journal);
-            pack_exit_codes.push(session.exit_code);
-            if session.hooks.is_empty() {
-                pack_hooks.push(None);
-            } else {
-                pack_hooks.push(Some(session.hooks))
-            }
-        }
-        PackSession {
-            pack_segments,
-            pack_journals,
-            pack_exit_codes,
-            pack_hooks,
-        }
-    }
-
-    pub fn resolve_packed_segments(&self) -> Result<Vec<Vec<&Segment>>> {
-        let mut resolved_packed_segments: Vec<Vec<&Segment>> = Vec::new();
-        for (i, pack_segment) in self.pack_segments.iter().enumerate() {
-            for segment in pack_segment {
-                resolved_packed_segments[i].push(&segment.resolve()?);
-            }
-        }
-        Ok(resolved_packed_segments)
-    }
-}
 /// The execution trace of a program.
 ///
 /// The record of memory transactions of an execution that starts from an
@@ -126,6 +69,9 @@ pub struct Session {
 pub trait SegmentRef: Send {
     /// Resolve this reference into an actual [Segment].
     fn resolve(&self) -> Result<Segment>;
+
+    /// Make a clone of box
+    fn copy_box(&self) -> Box<dyn SegmentRef>;
 }
 
 /// The execution trace of a portion of a program.
@@ -237,6 +183,10 @@ impl SegmentRef for SimpleSegmentRef {
     fn resolve(&self) -> Result<Segment> {
         Ok(self.segment.clone())
     }
+
+    fn copy_box(&self) -> Box<dyn SegmentRef> {
+        Box::new(self.clone())
+    }
 }
 
 impl SimpleSegmentRef {
@@ -266,6 +216,10 @@ impl SegmentRef for FileSegmentRef {
         file.read_to_end(&mut contents)?;
         let segment: Segment = bincode::deserialize(&contents)?;
         Ok(segment)
+    }
+
+    fn copy_box(&self) -> Box<dyn SegmentRef> {
+        Box::new(self.clone())
     }
 }
 

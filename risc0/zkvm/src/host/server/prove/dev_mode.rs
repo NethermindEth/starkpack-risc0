@@ -15,7 +15,8 @@
 use anyhow::{bail, Result};
 
 use crate::{
-    InnerReceipt, ProverServer, Receipt, Segment, SegmentReceipt, Session, VerifierContext,
+    host::server::packer::PackSession, InnerReceipt, ProverServer, Receipt, Segment,
+    SegmentReceipt, VerifierContext,
 };
 
 /// An implementation of a [ProverServer] for development and testing purposes.
@@ -40,7 +41,7 @@ use crate::{
 pub struct DevModeProver;
 
 impl ProverServer for DevModeProver {
-    fn prove_session(&self, _ctx: &VerifierContext, session: Vec<&Session>) -> Result<Receipt> {
+    fn prove_session(&self, _ctx: &VerifierContext, pack_session: PackSession) -> Result<Receipt> {
         eprintln!(
             "WARNING: Proving in dev mode does not generate a valid receipt. \
             Receipts generated from this process are invalid and should never be used in production."
@@ -52,11 +53,20 @@ impl ProverServer for DevModeProver {
             )
         }
 
-        let session = session.first().unwrap();
-        Ok(Receipt::new(InnerReceipt::Fake, session.journal.clone()))
+        // let session = pack_session.first().unwrap();
+        let first_session_journal = &pack_session.pack_journals[0];
+        Ok(Receipt::new(
+            InnerReceipt::Fake,
+            first_session_journal.to_vec(),
+        ))
+        // Ok(Receipt::new(InnerReceipt::Fake, session.journal.clone()))
     }
 
-    fn prove_segment(&self, _ctx: &VerifierContext, _segment: &Segment) -> Result<SegmentReceipt> {
+    fn prove_segment(
+        &self,
+        _ctx: &VerifierContext,
+        _segment: Vec<&Segment>,
+    ) -> Result<SegmentReceipt> {
         unimplemented!("This is unsupported for dev mode.")
     }
 

@@ -22,13 +22,13 @@ use risc0_zkp::{
     adapter::TapsProvider,
     hal::{CircuitHal, Hal},
     layout::Buffer,
-    prove::adapter::ProveAdapter,
+    prove::{adapter::ProveAdapter, prover::make_coeffs},
 };
 
 use super::{exec::MachineContext, HalPair, ProverServer};
 use crate::{
-    host::{receipt::SegmentReceipts, server::session::PackSession, CIRCUIT},
-    InnerReceipt, Loader, Receipt, Segment, SegmentReceipt, Session, VerifierContext,
+    host::{receipt::SegmentReceipts, server::packer::PackSession, CIRCUIT},
+    InnerReceipt, Loader, Receipt, Segment, SegmentReceipt, VerifierContext,
 };
 
 /// An implementation of a Prover that runs locally.
@@ -66,7 +66,9 @@ where
         let pack_segments = pack_session.resolve_packed_segments()?;
         let mut segments = Vec::new();
         for pack_segment in pack_segments {
-            segments.push(self.prove_segment(ctx, pack_segment)?);
+            segments.push(
+                self.prove_segment(ctx, pack_segment.iter().map(|segment| segment).collect())?,
+            );
         }
         // explicitly avoid hooks
         // for (i, segment_ref) in session0.segments.iter().enumerate() {
@@ -101,6 +103,8 @@ where
     ) -> Result<SegmentReceipt> {
         use risc0_zkp::prove::executor::Executor;
 
+        // let segments = vec![segments.last().unwrap()];
+
         log::info!(
             "prove_segment[{}]: po2: {}, insn_cycles: {}",
             segments[0].index,
@@ -110,57 +114,71 @@ where
         let (hal, circuit_hal) = (self.hal_pair.hal.as_ref(), &self.hal_pair.circuit_hal);
         let hashfn = &hal.get_hash_suite().name;
 
-        let ios = Vec::new();
-        let machines = Vec::new();
-        let adapters = Vec::new();
+        let mut ios = Vec::new();
+        let mut executors = Vec::new();
+        let mut adapters = Vec::new();
         for segment in segments.iter() {
             let io: Vec<Elem> = segment.prepare_globals();
-            ios.push(io);
+            ios.push(io.clone());
             let machine = MachineContext::new(segment);
-            machines.push(machine);
-            let mut executor = Executor::new(&CIRCUIT, machine, segment.po2, segment.po2, &io);
-
+            let executor = Executor::new(&CIRCUIT, machine, segment.po2, segment.po2, &io);
+            executors.push(executor);
+        }
+        for executor in executors.iter_mut() {
             let loader = Loader::new();
             loader.load(|chunk, fini| executor.step(chunk, fini))?;
             executor.finalize();
-            let mut adapter = ProveAdapter::new(&mut executor);
+            let adapter = ProveAdapter::new(executor);
             adapters.push(adapter);
         }
 
         let mut prover: risc0_zkp::prove::Prover<'_, H> =
             risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
-        for adaptor in adapters.iter() {
-            adapter.execute(prover.iop());
-        }
+        // for adapter in adapters.iter_mut() {
+        //     adapter.execute(prover.iop());
+        // }
+        adapters[0].execute(prover.iop());
         prover.set_po2(adapters[0].po2() as usize);
 
         prover.commit_group(
             REGISTER_GROUP_CODE,
-            hal.copy_from_elem("code", &adapter.get_code().as_slice()),
+            hal.copy_from_elem("code", &adapters[0].get_code().as_slice()),
         );
+
         prover.commit_group(
             REGISTER_GROUP_DATA,
-            hal.copy_from_elem("data", &adapter.get_data().as_slice()),
+            hal.copy_from_elem("data", &adapters[0].get_data().as_slice()),
         );
-        for adaptor in adapters.iter() {
+
+        let _datas_coeffs = adapters.iter().map(|adapter| {
+            make_coeffs(
+                hal,
+                hal.copy_from_elem("data", &adapter.get_data().as_slice()),
+                prover.taps.group_size(REGISTER_GROUP_DATA),
+            )
+        });
+        // for coeffs in datas_coeffs {
+        //     coeffs.view(|x| println!("\nCoeffs:{:?}\n", x));
+        // }
+        for adapter in adapters.iter_mut() {
             adapter.accumulate(prover.iop());
         }
         prover.commit_group(
             REGISTER_GROUP_ACCUM,
-            hal.copy_from_elem("accum", &adapter.get_accum().as_slice()),
+            hal.copy_from_elem("accum", &adapters[0].get_accum().as_slice()),
         );
 
-        let mix = hal.copy_from_elem("mix", &adapter.get_mix().as_slice());
-        let out_slice = &adapter.get_io().as_slice();
+        let mix = hal.copy_from_elem("mix", &adapters[0].get_mix().as_slice());
+        let out_slice = &adapters[0].get_io().as_slice();
 
         log::debug!("Globals: {:?}", OutBuffer(out_slice).tree(&LAYOUT));
-        let out = hal.copy_from_elem("out", &adapter.get_io().as_slice());
+        let out = hal.copy_from_elem("out", &adapters[0].get_io().as_slice());
 
         let seal = prover.finalize(&[&mix, &out], circuit_hal.as_ref());
 
         let receipt = SegmentReceipt {
             seal,
-            index: segment.index,
+            index: segments[0].index,
             hashfn: hashfn.clone(),
         };
         receipt.verify_with_context(ctx)?;
