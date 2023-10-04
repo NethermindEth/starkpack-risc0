@@ -37,7 +37,7 @@ where
     S: CircuitStepHandler<F::Elem>,
 {
     exec: &'a mut Executor<F, C, S>,
-    pub mix: CpuBuffer<F::Elem>,
+    mix: CpuBuffer<F::Elem>,
     accum: CpuBuffer<F::Elem>,
     steps: usize,
 }
