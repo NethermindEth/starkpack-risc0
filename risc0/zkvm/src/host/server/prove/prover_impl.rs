@@ -22,13 +22,13 @@ use risc0_zkp::{
     adapter::TapsProvider,
     hal::{CircuitHal, Hal},
     layout::Buffer,
-    prove::adapter::ProveAdapter,
+    prove::{adapter::ProveAdapter, prover::make_coeffs},
 };
 
 use super::{exec::MachineContext, HalPair, ProverServer};
 use crate::{
-    host::{receipt::SegmentReceipts, server::session::PackSession, CIRCUIT},
-    InnerReceipt, Loader, Receipt, Segment, SegmentReceipt, Session, VerifierContext,
+    host::{receipt::SegmentReceipts, server::packer::PackSession, CIRCUIT},
+    InnerReceipt, Loader, Receipt, Segment, SegmentReceipt, VerifierContext,
 };
 
 /// An implementation of a Prover that runs locally.
@@ -66,7 +66,9 @@ where
         let pack_segments = pack_session.resolve_packed_segments()?;
         let mut segments = Vec::new();
         for pack_segment in pack_segments {
-            segments.push(self.prove_segment(ctx, pack_segment)?);
+            segments.push(
+                self.prove_segment(ctx, pack_segment.iter().map(|segment| segment).collect())?,
+            );
         }
         // explicitly avoid hooks
         // for (i, segment_ref) in session0.segments.iter().enumerate() {
@@ -101,6 +103,8 @@ where
     ) -> Result<SegmentReceipt> {
         use risc0_zkp::prove::executor::Executor;
 
+        // let segments = vec![segments.last().unwrap()];
+
         log::info!(
             "prove_segment[{}]: po2: {}, insn_cycles: {}",
             segments[0].index,
@@ -110,20 +114,21 @@ where
         let (hal, circuit_hal) = (self.hal_pair.hal.as_ref(), &self.hal_pair.circuit_hal);
         let hashfn = &hal.get_hash_suite().name;
 
-        let ios = Vec::new();
-        let machines = Vec::new();
-        let adapters = Vec::new();
+        let mut ios = Vec::new();
+        let mut executors = Vec::new();
+        let mut adapters = Vec::new();
         for segment in segments.iter() {
             let io: Vec<Elem> = segment.prepare_globals();
-            ios.push(io);
+            ios.push(io.clone());
             let machine = MachineContext::new(segment);
-            machines.push(machine);
-            let mut executor = Executor::new(&CIRCUIT, machine, segment.po2, segment.po2, &io);
-
+            let executor = Executor::new(&CIRCUIT, machine, segment.po2, segment.po2, &io);
+            executors.push(executor);
+        }
+        for executor in executors.iter_mut() {
             let loader = Loader::new();
             loader.load(|chunk, fini| executor.step(chunk, fini))?;
             executor.finalize();
-            let mut adapter = ProveAdapter::new(&mut executor);
+            let adapter = ProveAdapter::new(executor);
             adapters.push(adapter);
         }
 

@@ -14,6 +14,7 @@
 
 pub(crate) mod exec;
 pub(crate) mod opcode;
+pub(crate) mod packer;
 pub(crate) mod prove;
 pub(crate) mod session;
 #[cfg(test)]

@@ -43,6 +43,10 @@ impl SegmentRef for EmptySegmentRef {
     fn resolve(&self) -> Result<Segment> {
         Err(anyhow!("Segment resolution not supported"))
     }
+
+    fn copy_box(&self) -> Box<dyn SegmentRef> {
+        Box::new(EmptySegmentRef)
+    }
 }
 
 impl pb::Binary {
@@ -321,7 +325,7 @@ impl Server {
 
         let prover = get_prover_server(&opts)?;
         let ctx = VerifierContext::default();
-        let receipt = prover.prove_segment(&ctx, &segment)?;
+        let receipt = prover.prove_segment(&ctx, vec![&segment])?;
 
         let receipt_bytes = bincode::serialize(&receipt)?;
         let asset = pb::Asset::from_bytes(

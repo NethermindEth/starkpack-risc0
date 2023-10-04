@@ -26,14 +26,14 @@ use crate::{
 /// Object to generate a zero-knowledge proof of the execution of some circuit.
 pub struct Prover<'a, H: Hal> {
     hal: &'a H,
-    taps: &'a TapSet<'a>,
+    pub taps: &'a TapSet<'a>,
     iop: WriteIOP<H::Field>,
     groups: Vec<Option<PolyGroup<H>>>,
     cycles: usize,
     po2: usize,
 }
 
-fn make_coeffs<H: Hal>(hal: &H, buf: H::Buffer<H::Elem>, count: usize) -> H::Buffer<H::Elem> {
+pub fn make_coeffs<H: Hal>(hal: &H, buf: H::Buffer<H::Elem>, count: usize) -> H::Buffer<H::Elem> {
     // Do interpolate
     hal.batch_interpolate_ntt(&buf, count);
     // Convert f(x) -> f(3x), which effective multiplies cofficent c_i by 3^i.
