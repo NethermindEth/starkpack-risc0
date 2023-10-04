@@ -103,8 +103,6 @@ where
     ) -> Result<SegmentReceipt> {
         use risc0_zkp::prove::executor::Executor;
 
-        // let segments = vec![segments.last().unwrap()];
-
         log::info!(
             "prove_segment[{}]: po2: {}, insn_cycles: {}",
             segments[0].index,
