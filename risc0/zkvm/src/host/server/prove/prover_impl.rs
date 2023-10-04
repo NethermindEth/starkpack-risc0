@@ -103,8 +103,6 @@ where
     ) -> Result<SegmentReceipt> {
         use risc0_zkp::prove::executor::Executor;
 
-        // let segments = vec![segments.last().unwrap()];
-
         log::info!(
             "prove_segment[{}]: po2: {}, insn_cycles: {}",
             segments[0].index,
@@ -134,9 +132,6 @@ where
 
         let mut prover: risc0_zkp::prove::Prover<'_, H> =
             risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
-        // for adapter in adapters.iter_mut() {
-        //     adapter.execute(prover.iop());
-        // }
         adapters[0].execute(prover.iop());
         prover.set_po2(adapters[0].po2() as usize);
 
@@ -157,12 +152,8 @@ where
                 prover.taps.group_size(REGISTER_GROUP_DATA),
             )
         });
-        // for coeffs in datas_coeffs {
-        //     coeffs.view(|x| println!("\nCoeffs:{:?}\n", x));
-        // }
-        for adapter in adapters.iter_mut() {
-            adapter.accumulate(prover.iop());
-        }
+
+        adapters[0].accumulate(prover.iop());
         prover.commit_group(
             REGISTER_GROUP_ACCUM,
             hal.copy_from_elem("accum", &adapters[0].get_accum().as_slice()),
