@@ -22,13 +22,13 @@ use risc0_zkp::{
     adapter::TapsProvider,
     hal::{CircuitHal, Hal},
     layout::Buffer,
-    prove::{adapter::ProveAdapter, prover::make_coeffs},
+    prove::prover::make_coeffs,
 };
 
-use super::{exec::MachineContext, HalPair, ProverServer};
+use super::{HalPair, ProverServer};
 use crate::{
     host::{receipt::SegmentReceipts, server::packer::PackSession, CIRCUIT},
-    InnerReceipt, Loader, Receipt, Segment, SegmentReceipt, VerifierContext,
+    InnerReceipt, Receipt, Segment, SegmentReceipt, VerifierContext,
 };
 
 /// An implementation of a Prover that runs locally.
@@ -101,8 +101,7 @@ where
         ctx: &VerifierContext,
         segments: Vec<&Segment>,
     ) -> Result<SegmentReceipt> {
-        use risc0_zkp::prove::executor::Executor;
-
+        let seg_index = segments[0].index;
         log::info!(
             "prove_segment[{}]: po2: {}, insn_cycles: {}",
             segments[0].index,
@@ -112,23 +111,8 @@ where
         let (hal, circuit_hal) = (self.hal_pair.hal.as_ref(), &self.hal_pair.circuit_hal);
         let hashfn = &hal.get_hash_suite().name;
 
-        let mut ios = Vec::new();
-        let mut executors = Vec::new();
-        let mut adapters = Vec::new();
-        for segment in segments.iter() {
-            let io: Vec<Elem> = segment.prepare_globals();
-            ios.push(io.clone());
-            let machine = MachineContext::new(segment);
-            let executor = Executor::new(&CIRCUIT, machine, segment.po2, segment.po2, &io);
-            executors.push(executor);
-        }
-        for executor in executors.iter_mut() {
-            let loader = Loader::new();
-            loader.load(|chunk, fini| executor.step(chunk, fini))?;
-            executor.finalize();
-            let adapter = ProveAdapter::new(executor);
-            adapters.push(adapter);
-        }
+        let mut executors = PackSession::generate_machine_executors(segments);
+        let mut adapters = PackSession::generate_adapters(&mut executors)?;
 
         let mut prover: risc0_zkp::prove::Prover<'_, H> =
             risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
@@ -169,7 +153,7 @@ where
 
         let receipt = SegmentReceipt {
             seal,
-            index: segments[0].index,
+            index: seg_index,
             hashfn: hashfn.clone(),
         };
         receipt.verify_with_context(ctx)?;

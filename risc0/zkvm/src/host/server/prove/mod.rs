@@ -15,7 +15,7 @@
 //! Run the zkVM guest and prove its results.
 
 mod dev_mode;
-mod exec;
+pub(super) mod exec;
 pub(crate) mod loader;
 mod plonk;
 mod prover_impl;
@@ -132,7 +132,7 @@ impl Segment {
         prover.prove_segment(ctx, vec![self])
     }
 
-    fn prepare_globals(&self) -> Vec<Elem> {
+    pub(super) fn prepare_globals(&self) -> Vec<Elem> {
         let mut io = vec![Elem::INVALID; CircuitImpl::OUTPUT_SIZE];
         log::debug!("run> pc: 0x{:08x}", self.pre_image.pc);
 

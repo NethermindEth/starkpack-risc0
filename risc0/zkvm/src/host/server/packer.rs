@@ -1,8 +1,12 @@
 use anyhow::{Ok, Result};
 use risc0_binfmt::MemoryImage;
+use risc0_circuit_rv32im::CircuitImpl;
+use risc0_core::field::baby_bear::BabyBear;
+use risc0_zkp::prove::{adapter::ProveAdapter, executor::Executor};
 
 use crate::{
-    host::receipt::ExitCode, Executor, ExecutorEnv, Segment, SegmentRef, Session, SessionEvents,
+    host::{receipt::ExitCode, server::prove::exec::MachineContext, CIRCUIT},
+    Executor as SessionExec, ExecutorEnv, Loader, Segment, SegmentRef, Session, SessionEvents,
 };
 
 pub struct PackSession {
@@ -17,7 +21,7 @@ impl PackSession {
         assert!(envs.is_empty() == false, "No execution enviroments found");
         let mut sessions = Vec::new();
         for env in envs {
-            let mut exec = Executor::new(env, image.clone())?;
+            let mut exec = SessionExec::new(env, image.clone())?;
             let sub_session = exec.run()?;
             sessions.push(sub_session);
         }
@@ -67,5 +71,34 @@ impl PackSession {
             resolved_packed_segments.push(ith_pack_segments);
         }
         Ok(resolved_packed_segments)
+    }
+
+    pub fn generate_machine_executors(
+        pack_segment: Vec<&Segment>,
+    ) -> Vec<Executor<BabyBear, CircuitImpl, MachineContext>> {
+        let mut ios = Vec::new();
+        let mut executors = Vec::new();
+        for segment in pack_segment.iter() {
+            let io = segment.prepare_globals();
+            ios.push(io.clone());
+            let machine = MachineContext::new(segment);
+            let executor = Executor::new(&CIRCUIT, machine, segment.po2, segment.po2, &io);
+            executors.push(executor);
+        }
+        executors
+    }
+
+    pub fn generate_adapters(
+        executors: &mut Vec<Executor<BabyBear, CircuitImpl, MachineContext>>,
+    ) -> Result<Vec<ProveAdapter<'_, BabyBear, CircuitImpl, MachineContext>>> {
+        let mut adapters = Vec::new();
+        for executor in executors.iter_mut() {
+            let loader = Loader::new();
+            loader.load(|chunk, fini| executor.step(chunk, fini))?;
+            executor.finalize();
+            let adapter = ProveAdapter::new(executor);
+            adapters.push(adapter);
+        }
+        Ok(adapters)
     }
 }
