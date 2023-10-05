@@ -74,20 +74,23 @@ impl<'a, H: Hal> Prover<'a, H> {
     /// Commits a given buffer to the IOP; the values must not subsequently
     /// change.
     #[tracing::instrument(skip_all)]
-    pub fn commit_group(&mut self, tap_group_index: usize, buf: H::Buffer<H::Elem>) {
+    pub fn commit_group(&mut self, tap_group_index: usize, bufs: Vec<H::Buffer<H::Elem>>) {
         let group_size = self.taps.group_size(tap_group_index);
-        assert_eq!(buf.size() % group_size, 0);
-        assert_eq!(buf.size() / group_size, self.cycles);
+        assert_eq!(bufs[0].size() % group_size, 0);
+        assert_eq!(bufs[0].size() / group_size, self.cycles);
         assert!(
             self.groups[tap_group_index].is_none(),
             "Attempted to commit group {} more than once",
             self.taps.group_name(tap_group_index)
         );
 
-        let coeffs = make_coeffs(self.hal, buf, group_size);
+        let coeffs_vec = bufs
+            .iter()
+            .map(|&buf| make_coeffs(self.hal, buf, group_size))
+            .collect();
         let group_ref = self.groups[tap_group_index].insert(PolyGroup::new(
             self.hal,
-            coeffs,
+            coeffs_vec,
             group_size,
             self.cycles,
             "data",
@@ -104,13 +107,18 @@ impl<'a, H: Hal> Prover<'a, H> {
 
     /// Generates the proof and returns the seal.
     #[tracing::instrument(skip_all)]
-    pub fn finalize<C>(mut self, globals: &[&H::Buffer<H::Elem>], circuit_hal: &C) -> Vec<u32>
+    pub fn finalize<C>(
+        mut self,
+        globals_vec: Vec<&[&H::Buffer<H::Elem>]>,
+        circuit_hal: &C,
+    ) -> Vec<u32>
     where
         C: CircuitHal<H>,
     {
         // Set the poly mix value, which is used for constraint compression in the
         // DEEP-ALI protocol.
-        let poly_mix = self.iop.random_ext_elem();
+        let n = globals_vec.len();
+        let poly_mix_vec = (0..n).map(|i| self.iop.random_ext_elem()).collect();
         let domain = self.cycles * INV_RATE;
         let ext_size = H::ExtElem::EXT_SIZE;
 
@@ -118,21 +126,24 @@ impl<'a, H: Hal> Prover<'a, H> {
         // The check polynomial is the core of the STARK: if the constraints are
         // satisfied, the check polynomial will be a low-degree polynomial. See
         // DEEP-ALI paper for details on the construction of the check_poly.
-        let check_poly = self.hal.alloc_elem("check_poly", ext_size * domain);
-
-        let groups: Vec<&_> = self
-            .groups
-            .iter()
-            .map(|pg| &pg.as_ref().unwrap().evaluated)
+        let check_poly_vec = (0..n)
+            .map(|i| self.hal.alloc_elem("check_poly", ext_size * domain))
             .collect();
-        circuit_hal.eval_check(
-            &check_poly,
-            groups.as_slice(),
-            globals,
-            poly_mix,
-            self.po2,
-            self.cycles,
-        );
+        for i in 0..n {
+            let groups: Vec<&_> = self
+                .groups
+                .iter()
+                .map(|pg| &pg.as_ref().unwrap().evaluated_vec[i])
+                .collect();
+            circuit_hal.eval_check(
+                &check_poly_vec[i],
+                groups.as_slice(),
+                globals_vec[i],
+                poly_mix_vec[i],
+                self.po2,
+                self.cycles,
+            );
+        }
 
         #[cfg(feature = "circuit_debug")]
         check_poly.view(|check_out| {

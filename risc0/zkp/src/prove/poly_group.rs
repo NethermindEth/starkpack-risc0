@@ -50,9 +50,10 @@ use crate::{
 /// about the original datapoints (i.e. is zero knowledge) so long as the number
 /// of queries is less than the randomized padding.
 pub struct PolyGroup<H: Hal> {
-    pub coeffs: H::Buffer<H::Elem>,
+    pub coeffs_vec: Vec<H::Buffer<H::Elem>>,
+    //We may need a vector of counts
     pub count: usize,
-    pub evaluated: H::Buffer<H::Elem>,
+    pub evaluated_vec: Vec<H::Buffer<H::Elem>>,
     pub merkle: MerkleTreeProver<H>,
 }
 
@@ -60,21 +61,38 @@ impl<H: Hal> PolyGroup<H> {
     #[tracing::instrument(name = "PolyGroup", skip_all, fields(name = _name))]
     pub fn new(
         hal: &H,
-        coeffs: H::Buffer<H::Elem>,
+        coeffs_vec: Vec<H::Buffer<H::Elem>>,
         count: usize,
         size: usize,
         _name: &'static str,
     ) -> Self {
-        assert_eq!(coeffs.size(), count * size);
+        assert_eq!(coeffs_vec[0].size(), count * size);
         let domain = size * INV_RATE;
-        let evaluated = hal.alloc_elem("evaluated", count * domain);
-        hal.batch_expand_into_evaluate_ntt(&evaluated, &coeffs, count, log2_ceil(INV_RATE));
-        hal.batch_bit_reverse(&coeffs, count);
-        let merkle = MerkleTreeProver::new(hal, &evaluated, domain, count, QUERIES);
+        let n: usize = coeffs_vec.len();
+
+        //I don't know why both of the approaches don't work
+        //let evaluated_vec = coeffs_vec
+        //    .iter()
+        //    .map(|&coeffs| hal.alloc_elem("evaluated", count * domain))
+        //    .collect();
+        let evaluated_vec = (0..n)
+            .map(|i| hal.alloc_elem("evaluated", count * domain))
+            .collect();
+        for (evaluated, coeffs) in evaluated_vec.iter().zip(coeffs_vec.iter()) {
+            hal.batch_expand_into_evaluate_ntt(&evaluated, &coeffs, count, log2_ceil(INV_RATE));
+            hal.batch_bit_reverse(&coeffs, count);
+        }
+        //Here we combine all the evaluations into one evaluated_matrix and construct the merkle tree from it
+        //This may not be the best approach but modifying the MerkleTreeProver struct is even worse
+        let mut evaluated_matrix = evaluated_vec[0];
+        for evaluated in evaluated_vec.iter().skip(1) {
+            evaluated_matrix = evaluated_matrix.iter().chain(evaluated.iter()).collect();
+        }
+        let merkle = MerkleTreeProver::new(hal, &evaluated_matrix, domain, count * n, QUERIES);
         PolyGroup {
-            coeffs,
+            coeffs_vec,
             count,
-            evaluated,
+            evaluated_vec,
             merkle,
         }
     }
