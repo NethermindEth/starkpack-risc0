@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use risc0_core::field::Elem;
+
 use crate::{
     core::log2_ceil,
-    hal::{Buffer, Hal},
+    hal::{cpu::CpuBuffer, Buffer, Hal},
     prove::merkle::MerkleTreeProver,
     INV_RATE, QUERIES,
 };
@@ -70,12 +72,7 @@ impl<H: Hal> PolyGroup<H> {
         let domain = size * INV_RATE;
         let n: usize = coeffs_vec.len();
 
-        //I don't know why both of the approaches don't work
-        //let evaluated_vec = coeffs_vec
-        //    .iter()
-        //    .map(|&coeffs| hal.alloc_elem("evaluated", count * domain))
-        //    .collect();
-        let evaluated_vec = (0..n)
+        let evaluated_vec: Vec<<H as Hal>::Buffer<<H as Hal>::Elem>> = (0..n)
             .map(|i| hal.alloc_elem("evaluated", count * domain))
             .collect();
         for (evaluated, coeffs) in evaluated_vec.iter().zip(coeffs_vec.iter()) {
@@ -84,9 +81,13 @@ impl<H: Hal> PolyGroup<H> {
         }
         //Here we combine all the evaluations into one evaluated_matrix and construct the merkle tree from it
         //This may not be the best approach but modifying the MerkleTreeProver struct is even worse
-        let mut evaluated_matrix = evaluated_vec[0];
-        for evaluated in evaluated_vec.iter().skip(1) {
-            evaluated_matrix = evaluated_matrix.iter().chain(evaluated.iter()).collect();
+        let evaluated_matrix = CpuBuffer::from_fn(evaluated_vec[0].size() * n, |_| Elem::INVALID);
+        for evaluated in evaluated_vec.iter() {
+            evaluated_matrix = evaluated_matrix
+                .slice(0, evaluated.size())
+                .iter()
+                .chain(evaluated.iter())
+                .collect();
         }
         let merkle = MerkleTreeProver::new(hal, &evaluated_matrix, domain, count * n, QUERIES);
         PolyGroup {

@@ -118,7 +118,7 @@ impl<'a, H: Hal> Prover<'a, H> {
         // Set the poly mix value, which is used for constraint compression in the
         // DEEP-ALI protocol.
         let n = globals_vec.len();
-        let poly_mix_vec = (0..n).map(|i| self.iop.random_ext_elem()).collect();
+        let poly_mix_vec: Vec<<H as Hal>::ExtElem> = (0..n).map(|i| self.iop.random_ext_elem()).collect();
         let domain = self.cycles * INV_RATE;
         let ext_size = H::ExtElem::EXT_SIZE;
 
@@ -126,7 +126,9 @@ impl<'a, H: Hal> Prover<'a, H> {
         // The check polynomial is the core of the STARK: if the constraints are
         // satisfied, the check polynomial will be a low-degree polynomial. See
         // DEEP-ALI paper for details on the construction of the check_poly.
-        let check_poly_vec = (0..n)
+
+        //let check_poly: Vec<<H as Hal>::Buffer<<H as Hal>::Elem>> = self.hal.alloc_elem("check_poly", ext_size * domain);
+        let check_poly_vec: Vec<<H as Hal>::Buffer<<H as Hal>::Elem>> = (0..n)
             .map(|i| self.hal.alloc_elem("check_poly", ext_size * domain))
             .collect();
         for i in 0..n {
@@ -159,7 +161,14 @@ impl<'a, H: Hal> Prover<'a, H> {
         // roots of unity (which are the only thing that and values get multiplied
         // by) are in Fp, Fp4 values act like simple vectors of Fp for the
         // purposes of interpolate/evaluate.
-        self.hal.batch_interpolate_ntt(&check_poly, ext_size);
+        let mut final_poly = check_poly_vec[0].as_slice();
+        for check_poly in check_poly_vec.iter().skip(1){
+            let cur_poly = check_poly.as_slice();
+            for (final_value,cur_value) in final_poly.iter().zip(){
+                cur_poly =
+            }
+        }
+        self.hal.batch_interpolate_ntt(&final_poly, ext_size);
 
         // The next step is to convert the degree 4*n check polynomial into 4 degreen n
         // polynomials so that f(x) = g0(x^4) + g1(x^4) x + g2(x^4) x^2 + g3(x^4)
@@ -173,7 +182,7 @@ impl<'a, H: Hal> Prover<'a, H> {
         // invRate*size to 16 polys of size, without actually doing anything.
 
         // Make the PolyGroup + add it to the IOP;
-        let check_group = PolyGroup::new(self.hal, check_poly, H::CHECK_SIZE, self.cycles, "check");
+        let check_group = PolyGroup::new(self.hal, vec![final_poly], H::CHECK_SIZE, self.cycles, "check");
         check_group.merkle.commit(&mut self.iop);
         log::debug!("checkGroup: {}", check_group.merkle.root());
 
