@@ -162,7 +162,6 @@ where
 
         log::debug!("Globals: {:?}", OutBuffer(out_slice_vec[0]).tree(&LAYOUT));
         let seal = prover.finalize(globals_vec, circuit_hal.as_ref());
-        let seal = prover.finalize(&[&mix, &out], circuit_hal.as_ref());
 
         let receipt = SegmentReceipt {
             seal,

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use risc0_core::field::Elem;
+//use risc0_core::field::Elem;
 
 use crate::{
     core::log2_ceil,
-    hal::{cpu::CpuBuffer, Buffer, Hal},
+    hal::{Buffer, Hal},
     prove::merkle::MerkleTreeProver,
     INV_RATE, QUERIES,
 };
@@ -81,15 +81,13 @@ impl<H: Hal> PolyGroup<H> {
         }
         //Here we combine all the evaluations into one evaluated_matrix and construct the merkle tree from it
         //This may not be the best approach but modifying the MerkleTreeProver struct is even worse
-        let evaluated_matrix = CpuBuffer::from_fn(evaluated_vec[0].size() * n, |_| Elem::INVALID);
-        for evaluated in evaluated_vec.iter() {
-            evaluated_matrix = evaluated_matrix
-                .slice(0, evaluated.size())
-                .iter()
-                .chain(evaluated.iter())
-                .collect();
-        }
-        let merkle = MerkleTreeProver::new(hal, &evaluated_matrix, domain, count * n, QUERIES);
+        let evaluated_matrix = evaluated_vec.iter().fold(vec![], |acc, evaluated| {
+            let mut p = Vec::new();
+            evaluated.view(|evaluated| p = [acc, evaluated.to_vec()].concat());
+            p
+        });
+        let e_v = hal.copy_from_elem("name", evaluated_matrix.as_slice());
+        let merkle = MerkleTreeProver::new(hal, &e_v, domain, count * n, QUERIES);
         PolyGroup {
             coeffs_vec,
             count,
