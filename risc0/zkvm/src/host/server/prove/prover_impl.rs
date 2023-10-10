@@ -114,7 +114,9 @@ where
         for adapter in adapters.iter_mut() {
             adapter.execute(prover.iop());
         }
-        prover.set_po2(adapters[0].po2() as usize);
+        prover.set_po2(adapters[0].po2() as usize); // All adapters already are set at the po2
+                                                    // of the largest segment, because of executor,
+                                                    // so we grab the first one
 
         let code_vec = adapters
             .iter()
@@ -135,19 +137,25 @@ where
             .map(|adapter| hal.copy_from_elem("accum", &adapter.get_accum().as_slice()))
             .collect();
         prover.commit_group(REGISTER_GROUP_ACCUM, accum_vec);
-        // let globals_vec = adapters
-        //     .iter()
-        //     .map(|&adapter| {
-        //         &[
-        //             hal.copy_from_elem("mix", &adapter.get_mix().as_slice()),
-        //             hal.copy_from_elem("out", &adapter.get_io().as_slice()),
-        //         ]
-        //     })
-        //     .collect();
-        let globals = [
-            &hal.copy_from_elem("mix", &adapters[0].get_mix().as_slice()),
-            &hal.copy_from_elem("out", &adapters[0].get_io().as_slice()),
-        ];
+
+        // Creating three vectors is very not ideal, we should use Another type to represent this
+        let mut globals_vec = Vec::new();
+        for adapter in adapters {
+            let globals = [
+                hal.copy_from_elem("mix", &adapter.get_mix().as_slice()),
+                hal.copy_from_elem("out", &adapter.get_io().as_slice()),
+            ];
+            globals_vec.push(globals.to_vec());
+        }
+        let mut globals_vec_ref = Vec::new();
+        for globals in globals_vec.iter() {
+            let global_ref: Vec<_> = globals.iter().map(|global| global).collect();
+            globals_vec_ref.push(global_ref)
+        }
+        let mut globals_vec_ref_ref = Vec::new();
+        for globals in globals_vec_ref.iter() {
+            globals_vec_ref_ref.push(globals.as_slice())
+        }
 
         let _out_slice_vec: Vec<_> = adapters
             .iter()
@@ -155,7 +163,7 @@ where
             .collect();
 
         // log::debug!("Globals: {:?}", OutBuffer(out_slice_vec[0]).tree(&LAYOUT));
-        let seal = prover.finalize(vec![&globals], circuit_hal.as_ref());
+        let seal = prover.finalize(globals_vec_ref_ref, circuit_hal.as_ref());
 
         let receipt = SegmentReceipt {
             seal,

@@ -78,11 +78,22 @@ impl PackSession {
     ) -> Vec<Executor<BabyBear, CircuitImpl, MachineContext>> {
         let mut ios = Vec::new();
         let mut executors = Vec::new();
+        let max_po2_in_segments = pack_segment
+            .iter()
+            .map(|segment| segment.po2)
+            .max()
+            .unwrap();
         for segment in pack_segment.iter() {
             let io = segment.prepare_globals();
             ios.push(io.clone());
             let machine = MachineContext::new(segment);
-            let executor = Executor::new(&CIRCUIT, machine, segment.po2, segment.po2, &io);
+            let executor = Executor::new(
+                &CIRCUIT,
+                machine,
+                max_po2_in_segments,
+                max_po2_in_segments,
+                &io,
+            );
             executors.push(executor);
         }
         executors
