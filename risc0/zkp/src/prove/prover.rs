@@ -162,20 +162,14 @@ impl<'a, H: Hal> Prover<'a, H> {
         // roots of unity (which are the only thing that and values get multiplied
         // by) are in Fp, Fp4 values act like simple vectors of Fp for the
         // purposes of interpolate/evaluate.
-        let mut first_poly = Vec::new();
-        check_poly_vec[0].view(|check_poly| first_poly = check_poly.to_vec());
-        let k = check_poly_vec
+        let first_poly = check_poly_vec[0];
+        let final_poly = check_poly_vec
             .iter()
             .skip(1)
             .fold(first_poly, |acc, check_poly| {
-                let mut sum_coeffs = Vec::new();
-                let mut cp = Vec::new();
-                check_poly.view(|check_poly| cp = check_poly.to_vec());
-                for (acc_coeff, check_coeff) in acc.iter().zip(cp.iter()) {
-                    //this addition is not working
-                    sum_coeffs.push(acc_coeff + check_coeff);
-                }
-                sum_coeffs
+                let prev = acc;
+                self.hal.eltwise_add_elem(&acc, &prev, check_poly);
+                acc
             });
         self.hal.batch_interpolate_ntt(&final_poly, ext_size);
 
@@ -221,44 +215,51 @@ impl<'a, H: Hal> Prover<'a, H> {
         // Sometimes it's a requirement for matching generated code, but even when
         // it's not we keep the order for consistency.
 
-        let mut eval_u: Vec<H::ExtElem> = Vec::new();
-        tracing::info_span!("eval_u").in_scope(|| {
-            for (id, pg) in self.groups.iter().enumerate() {
-                let pg = pg.as_ref().unwrap();
+        //We assume that all the traces have the same number of groups
+        let mut eval_u_vec = Vec::new();
+        let mut coeff_u_vec = Vec::new();
+        for index in 0..n {
+            let mut eval_u: Vec<H::ExtElem> = Vec::new();
+            tracing::info_span!("eval_u").in_scope(|| {
+                for (id, pg) in self.groups.iter().enumerate() {
+                    let pg = pg.as_ref().unwrap();
 
-                let mut which = Vec::new();
-                let mut xs = Vec::new();
-                for tap in self.taps.group_taps(id) {
-                    which.push(tap.offset() as u32);
-                    let x = back_one.pow(tap.back()) * z;
-                    xs.push(x);
-                    all_xs.push(x);
+                    //maybe this needs to be modified
+                    let mut which = Vec::new();
+                    let mut xs = Vec::new();
+                    for tap in self.taps.group_taps(id) {
+                        which.push(tap.offset() as u32);
+                        let x = back_one.pow(tap.back()) * z;
+                        xs.push(x);
+                        all_xs.push(x);
+                    }
+                    let which = self.hal.copy_from_u32("which", which.as_slice());
+                    let xs = self.hal.copy_from_extelem("xs", xs.as_slice());
+                    let out = self.hal.alloc_extelem("out", which.size());
+                    self.hal
+                        .batch_evaluate_any(&pg.coeffs_vec[index], pg.count, &which, &xs, &out);
+                    out.view(|view| {
+                        eval_u.extend(view);
+                    });
                 }
-                let which = self.hal.copy_from_u32("which", which.as_slice());
-                let xs = self.hal.copy_from_extelem("xs", xs.as_slice());
-                let out = self.hal.alloc_extelem("out", which.size());
-                self.hal
-                    .batch_evaluate_any(&pg.coeffs, pg.count, &which, &xs, &out);
-                out.view(|view| {
-                    eval_u.extend(view);
-                });
-            }
-        });
-
-        // Now, convert the values to coefficients via interpolation
-        let mut coeff_u = vec![H::ExtElem::ZERO; eval_u.len()];
-        tracing::info_span!("poly_interpolate").in_scope(|| {
-            let mut pos = 0;
-            for reg in self.taps.regs() {
-                poly_interpolate(
-                    &mut coeff_u[pos..],
-                    &all_xs[pos..],
-                    &eval_u[pos..],
-                    reg.size(),
-                );
-                pos += reg.size();
-            }
-        });
+            });
+            eval_u_vec.push(eval_u);
+            // Now, convert the values to coefficients via interpolation
+            let mut coeff_u = vec![H::ExtElem::ZERO; eval_u.len()];
+            tracing::info_span!("poly_interpolate").in_scope(|| {
+                let mut pos = 0;
+                for reg in self.taps.regs() {
+                    poly_interpolate(
+                        &mut coeff_u[pos..],
+                        &all_xs[pos..],
+                        &eval_u[pos..],
+                        reg.size(),
+                    );
+                    pos += reg.size();
+                }
+            });
+            coeff_u_vec.push(coeff_u);
+        }
 
         // Add in the coeffs of the check polynomials.
         let z_pow = z.pow(ext_size);
@@ -268,7 +269,7 @@ impl<'a, H: Hal> Prover<'a, H> {
         let which = self.hal.copy_from_u32("which", which.as_slice());
         let xs = self.hal.copy_from_extelem("xs", xs.as_slice());
         self.hal
-            .batch_evaluate_any(&check_group.coeffs, H::CHECK_SIZE, &which, &xs, &out);
+            .batch_evaluate_any(&check_group.coeffs_vec[0], H::CHECK_SIZE, &which, &xs, &out);
         out.view(|view| {
             coeff_u.extend(view);
         });
