@@ -13,16 +13,11 @@
 // limitations under the License.
 
 use anyhow::Result;
-use risc0_circuit_rv32im::{
-    layout::{OutBuffer, LAYOUT},
-    REGISTER_GROUP_ACCUM, REGISTER_GROUP_CODE, REGISTER_GROUP_DATA,
-};
+use risc0_circuit_rv32im::{REGISTER_GROUP_ACCUM, REGISTER_GROUP_CODE, REGISTER_GROUP_DATA};
 use risc0_core::field::baby_bear::{BabyBear, Elem, ExtElem};
 use risc0_zkp::{
     adapter::TapsProvider,
     hal::{CircuitHal, Hal},
-    layout::Buffer,
-    prove::prover::make_coeffs,
 };
 
 use super::{HalPair, ProverServer};
@@ -116,46 +111,51 @@ where
 
         let mut prover: risc0_zkp::prove::Prover<'_, H> =
             risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
-        for adapter in adapters.iter() {
+        for adapter in adapters.iter_mut() {
             adapter.execute(prover.iop());
         }
         prover.set_po2(adapters[0].po2() as usize);
 
         let code_vec = adapters
             .iter()
-            .map(|&adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
+            .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
             .collect();
         let data_vec = adapters
             .iter()
-            .map(|&adapter| hal.copy_from_elem("data", &adapter.get_data().as_slice()))
+            .map(|adapter| hal.copy_from_elem("data", &adapter.get_data().as_slice()))
             .collect();
         prover.commit_group(REGISTER_GROUP_CODE, code_vec);
         prover.commit_group(REGISTER_GROUP_DATA, data_vec);
 
-        for adapter in adapters.iter() {
+        for adapter in adapters.iter_mut() {
             adapter.accumulate(prover.iop());
         }
         let accum_vec = adapters
             .iter()
-            .map(|&adapter| hal.copy_from_elem("accum", &adapter.get_accum().as_slice()))
+            .map(|adapter| hal.copy_from_elem("accum", &adapter.get_accum().as_slice()))
             .collect();
         prover.commit_group(REGISTER_GROUP_ACCUM, accum_vec);
-        let globals_vec = adapters
+        // let globals_vec = adapters
+        //     .iter()
+        //     .map(|&adapter| {
+        //         &[
+        //             hal.copy_from_elem("mix", &adapter.get_mix().as_slice()),
+        //             hal.copy_from_elem("out", &adapter.get_io().as_slice()),
+        //         ]
+        //     })
+        //     .collect();
+        let globals = [
+            &hal.copy_from_elem("mix", &adapters[0].get_mix().as_slice()),
+            &hal.copy_from_elem("out", &adapters[0].get_io().as_slice()),
+        ];
+
+        let _out_slice_vec: Vec<_> = adapters
             .iter()
-            .map(|&adapter| {
-                &[
-                    hal.copy_from_elem("mix", &adapter.get_mix().as_slice()),
-                    hal.copy_from_elem("out", &adapter.get_io().as_slice()),
-                ]
-            })
-            .collect();
-        let out_slice_vec = adapters
-            .iter()
-            .map(|&adapter| &adapter.get_io().as_slice())
+            .map(|adapter| adapter.get_io().as_slice())
             .collect();
 
-        log::debug!("Globals: {:?}", OutBuffer(out_slice_vec[0]).tree(&LAYOUT));
-        let seal = prover.finalize(globals_vec, circuit_hal.as_ref());
+        // log::debug!("Globals: {:?}", OutBuffer(out_slice_vec[0]).tree(&LAYOUT));
+        let seal = prover.finalize(vec![&globals], circuit_hal.as_ref());
 
         let receipt = SegmentReceipt {
             seal,

@@ -73,7 +73,7 @@ impl<H: Hal> PolyGroup<H> {
         let n: usize = coeffs_vec.len();
 
         let evaluated_vec: Vec<<H as Hal>::Buffer<<H as Hal>::Elem>> = (0..n)
-            .map(|i| hal.alloc_elem("evaluated", count * domain))
+            .map(|_i| hal.alloc_elem("evaluated", count * domain))
             .collect();
         for (evaluated, coeffs) in evaluated_vec.iter().zip(coeffs_vec.iter()) {
             hal.batch_expand_into_evaluate_ntt(&evaluated, &coeffs, count, log2_ceil(INV_RATE));

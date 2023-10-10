@@ -24,19 +24,19 @@ use crate::{
     FRI_FOLD, FRI_MIN_DEGREE, INV_RATE, QUERIES,
 };
 
-struct ProveRoundInfo<H: Hal> {
+struct _ProveRoundInfo<H: Hal> {
     domain: usize,
     coeffs: H::Buffer<H::Elem>,
     merkle: MerkleTreeProver<H>,
 }
 
-impl<H: Hal> ProveRoundInfo<H> {
+impl<H: Hal> _ProveRoundInfo<H> {
     /// Computes a round of the folding protocol. Takes in the coefficients of
     /// the current polynomial, and interacts with the IOP verifier to
     /// produce the evaluations of the polynomial, the merkle tree
     /// committing to the evaluation, and the coefficients of the folded
     /// polynomial.
-    pub fn new(hal: &H, iop: &mut WriteIOP<H::Field>, coeffs: &H::Buffer<H::Elem>) -> Self {
+    pub fn _new(hal: &H, iop: &mut WriteIOP<H::Field>, coeffs: &H::Buffer<H::Elem>) -> Self {
         debug!("Doing FRI folding");
         let ext_size = H::ExtElem::EXT_SIZE;
         // Get the number of coefficients of the polynomial over the extension field.
@@ -66,14 +66,14 @@ impl<H: Hal> ProveRoundInfo<H> {
         let out_coeffs = hal.alloc_elem("out_coeffs", size / FRI_FOLD * ext_size);
         // Compute the folded polynomial
         hal.fri_fold(&out_coeffs, coeffs, &fold_mix);
-        ProveRoundInfo {
+        _ProveRoundInfo {
             domain,
             coeffs: out_coeffs,
             merkle,
         }
     }
 
-    pub fn prove_query(&mut self, hal: &H, iop: &mut WriteIOP<H::Field>, pos: &mut usize) {
+    pub fn _prove_query(&mut self, hal: &H, iop: &mut WriteIOP<H::Field>, pos: &mut usize) {
         // Compute which group we are in
         let group = *pos % (self.domain / FRI_FOLD);
         // Generate the proof
@@ -97,7 +97,7 @@ pub fn fri_prove<H: Hal, F>(
     let mut rounds = Vec::new();
     let mut coeffs = coeffs.clone();
     while coeffs.size() / ext_size > FRI_MIN_DEGREE {
-        let round = ProveRoundInfo::new(hal, iop, &coeffs);
+        let round = _ProveRoundInfo::_new(hal, iop, &coeffs);
         coeffs = round.coeffs.clone();
         rounds.push(round);
     }
@@ -120,7 +120,7 @@ pub fn fri_prove<H: Hal, F>(
         inner(iop, pos);
         // Write the per-round proofs
         for round in rounds.iter_mut() {
-            round.prove_query(hal, iop, &mut pos);
+            round._prove_query(hal, iop, &mut pos);
         }
     }
 }
