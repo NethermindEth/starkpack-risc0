@@ -13,11 +13,15 @@
 // limitations under the License.
 
 use anyhow::Result;
-use risc0_circuit_rv32im::{REGISTER_GROUP_ACCUM, REGISTER_GROUP_CODE, REGISTER_GROUP_DATA};
+use risc0_circuit_rv32im::{
+    layout::{OutBuffer, LAYOUT},
+    REGISTER_GROUP_ACCUM, REGISTER_GROUP_CODE, REGISTER_GROUP_DATA,
+};
 use risc0_core::field::baby_bear::{BabyBear, Elem, ExtElem};
 use risc0_zkp::{
     adapter::TapsProvider,
     hal::{CircuitHal, Hal},
+    layout::Buffer,
 };
 
 use super::{HalPair, ProverServer};
@@ -140,7 +144,7 @@ where
 
         // Creating three vectors is very not ideal, we should use Another type to represent this
         let mut globals_vec = Vec::new();
-        for adapter in adapters {
+        for adapter in adapters.iter() {
             let globals = [
                 hal.copy_from_elem("mix", &adapter.get_mix().as_slice()),
                 hal.copy_from_elem("out", &adapter.get_io().as_slice()),
@@ -157,12 +161,12 @@ where
             globals_vec_ref_ref.push(globals.as_slice())
         }
 
-        let _out_slice_vec: Vec<_> = adapters
+        let out_slice_vec: Vec<_> = adapters
             .iter()
             .map(|adapter| adapter.get_io().as_slice())
             .collect();
 
-        // log::debug!("Globals: {:?}", OutBuffer(out_slice_vec[0]).tree(&LAYOUT));
+        log::debug!("Globals: {:?}", OutBuffer(&out_slice_vec[0]).tree(&LAYOUT));
         let seal = prover.finalize(globals_vec_ref_ref, circuit_hal.as_ref());
 
         let receipt = SegmentReceipt {
