@@ -218,10 +218,8 @@ impl<'a, H: Hal> Prover<'a, H> {
         // Sometimes it's a requirement for matching generated code, but even when
         // it's not we keep the order for consistency.
 
-        //We assume that all the traces have the same number of groups
-        let mut coeff_u_vec = Vec::new();
+        let mut eval_u: Vec<H::ExtElem> = Vec::new();
         for index in 0..num_traces {
-            let mut eval_u: Vec<H::ExtElem> = Vec::new();
             tracing::info_span!("eval_u").in_scope(|| {
                 for (id, pg) in self.groups.iter().enumerate() {
                     let pg = pg.as_ref().unwrap();
@@ -245,10 +243,12 @@ impl<'a, H: Hal> Prover<'a, H> {
                     });
                 }
             });
-            // Now, convert the values to coefficients via interpolation
-            let mut coeff_u = vec![H::ExtElem::ZERO; eval_u.len()];
+        }
+        // Now, convert the values to coefficients via interpolation
+        let mut coeff_u = vec![H::ExtElem::ZERO; eval_u.len()];
+        let mut pos = 0;
+        for index in 0..num_traces {
             tracing::info_span!("poly_interpolate").in_scope(|| {
-                let mut pos = 0;
                 for reg in self.taps.regs() {
                     poly_interpolate(
                         &mut coeff_u[pos..],
@@ -259,11 +259,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                     pos += reg.size();
                 }
             });
-            coeff_u_vec.push(coeff_u);
         }
-
-        // Temp value for coeff_u
-        //let coeff_u = coeff_u_vec.first_mut().unwrap();
 
         // Add in the coeffs of the check polynomials.
         let z_pow = z.pow(ext_size);
@@ -275,25 +271,19 @@ impl<'a, H: Hal> Prover<'a, H> {
         self.hal
             .batch_evaluate_any(&check_group.coeffs_vec[0], H::CHECK_SIZE, &which, &xs, &out);
         out.view(|view| {
-            //coeff_u.extend(view);
-            coeff_u_vec.push(view);
+            coeff_u.extend(view);
         });
-        //I think it would be better to make One vector
-        //from all the coeff_u-s rather than have a vector of vectors
-        //That would also allow to commit to only one hash
-        //but for know I will implement the vec of vecs approach
+
         log::debug!("Size of U = {}", coeff_u.len());
         //Commits to the cofficients and to their hash
-        for coeff_u in coeff_u_vec.iter() {
-            log::debug!("Size of U = {}", coeff_u.len());
-            self.iop.write_field_elem_slice(&coeff_u);
-            let hash_u = self
-                .hal
-                .get_hash_suite()
-                .hashfn
-                .hash_ext_elem_slice(coeff_u.as_slice());
-            self.iop.commit(&hash_u);
-        }
+        log::debug!("Size of U = {}", coeff_u.len());
+        self.iop.write_field_elem_slice(&coeff_u);
+        let hash_u = self
+            .hal
+            .get_hash_suite()
+            .hashfn
+            .hash_ext_elem_slice(coeff_u.as_slice());
+        self.iop.commit(&hash_u);
 
         // Set the mix mix value, which is used for FRI batching.
         let mix = self.iop.random_ext_elem();
@@ -302,12 +292,11 @@ impl<'a, H: Hal> Prover<'a, H> {
         // Do the coefficent mixing
         // Begin by making a zeroed output buffer
         let combo_count = self.taps.combos_size();
-        let combos = vec![H::ExtElem::ZERO; self.cycles * (combo_count + 1)];
+        let combos = vec![H::ExtElem::ZERO; self.cycles * (num_traces * combo_count + 1)];
         let combos = self.hal.copy_from_extelem("combos", combos.as_slice());
         tracing::info_span!("mix_poly_coeffs").in_scope(|| {
             let mut cur_mix = H::ExtElem::ONE;
-
-            for i in 0..n {
+            for index in 0..num_traces {
                 for (id, pg) in self.groups.iter().enumerate() {
                     let pg = pg.as_ref().unwrap();
 
@@ -321,7 +310,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                         &combos,
                         &cur_mix,
                         &mix,
-                        &pg.coeffs,
+                        &pg.coeffs_vec[index],
                         &which,
                         group_size,
                         self.cycles,
@@ -350,11 +339,11 @@ impl<'a, H: Hal> Prover<'a, H> {
                     let mut cur_pos = 0;
                     let mut cur = H::ExtElem::ONE;
                     // Subtract the U coeffs from the combos
-                    for index in 0..n {
+                    for index in 0..num_traces {
                         for reg in self.taps.regs() {
                             for i in 0..reg.size() {
                                 combos[self.cycles * reg.combo_id() + i] -=
-                                    cur * coeff_u_vec[index][cur_pos + i];
+                                    cur * coeff_u[cur_pos + i];
                             }
                             cur *= mix;
                             cur_pos += reg.size();
@@ -362,7 +351,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                     }
                     // Subtract the final 'check' coefficents
                     for _ in 0..H::CHECK_SIZE {
-                        combos[self.cycles * combo_count] -= cur * coeff_u_vec[n][cur_pos];
+                        combos[self.cycles * combo_count * num_traces] -= cur * coeff_u[cur_pos];
                         cur_pos += 1;
                         cur *= mix;
                     }
@@ -371,7 +360,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                 tracing::info_span!("part2").in_scope(|| {
                     combos
                         .par_chunks_exact_mut(self.cycles)
-                        .zip(0..combo_count)
+                        .zip(0..combo_count * num_traces)
                         .for_each(|(combo, i)| {
                             for back in self.taps.get_combo(i).slice() {
                                 assert_eq!(
@@ -383,8 +372,8 @@ impl<'a, H: Hal> Prover<'a, H> {
                 });
                 tracing::info_span!("part3").in_scope(|| {
                     // Divide check polys by z^EXT_SIZE
-                    let slice = &mut combos
-                        [combo_count * self.cycles..combo_count * self.cycles + self.cycles];
+                    let slice = &mut combos[num_traces * combo_count * self.cycles
+                        ..num_traces * combo_count * self.cycles + self.cycles];
                     assert_eq!(poly_divide(slice, z_pow), H::ExtElem::ZERO);
                 });
             });
