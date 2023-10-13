@@ -219,7 +219,6 @@ impl<'a, H: Hal> Prover<'a, H> {
         // it's not we keep the order for consistency.
 
         //We assume that all the traces have the same number of groups
-        let mut eval_u_vec = Vec::new();
         let mut coeff_u_vec = Vec::new();
         for index in 0..num_traces {
             let mut eval_u: Vec<H::ExtElem> = Vec::new();
@@ -246,7 +245,6 @@ impl<'a, H: Hal> Prover<'a, H> {
                     });
                 }
             });
-            eval_u_vec.push(eval_u.clone());
             // Now, convert the values to coefficients via interpolation
             let mut coeff_u = vec![H::ExtElem::ZERO; eval_u.len()];
             tracing::info_span!("poly_interpolate").in_scope(|| {
@@ -265,7 +263,7 @@ impl<'a, H: Hal> Prover<'a, H> {
         }
 
         // Temp value for coeff_u
-        let coeff_u = coeff_u_vec.first_mut().unwrap();
+        //let coeff_u = coeff_u_vec.first_mut().unwrap();
 
         // Add in the coeffs of the check polynomials.
         let z_pow = z.pow(ext_size);
@@ -277,17 +275,25 @@ impl<'a, H: Hal> Prover<'a, H> {
         self.hal
             .batch_evaluate_any(&check_group.coeffs_vec[0], H::CHECK_SIZE, &which, &xs, &out);
         out.view(|view| {
-            coeff_u.extend(view);
+            //coeff_u.extend(view);
+            coeff_u_vec.push(view);
         });
-
+        //I think it would be better to make One vector
+        //from all the coeff_u-s rather than have a vector of vectors
+        //That would also allow to commit to only one hash
+        //but for know I will implement the vec of vecs approach
         log::debug!("Size of U = {}", coeff_u.len());
-        self.iop.write_field_elem_slice(&coeff_u);
-        let hash_u = self
-            .hal
-            .get_hash_suite()
-            .hashfn
-            .hash_ext_elem_slice(coeff_u.as_slice());
-        self.iop.commit(&hash_u);
+        //Commits to the cofficients and to their hash
+        for coeff_u in coeff_u_vec.iter() {
+            log::debug!("Size of U = {}", coeff_u.len());
+            self.iop.write_field_elem_slice(&coeff_u);
+            let hash_u = self
+                .hal
+                .get_hash_suite()
+                .hashfn
+                .hash_ext_elem_slice(coeff_u.as_slice());
+            self.iop.commit(&hash_u);
+        }
 
         // Set the mix mix value, which is used for FRI batching.
         let mix = self.iop.random_ext_elem();
@@ -301,25 +307,27 @@ impl<'a, H: Hal> Prover<'a, H> {
         tracing::info_span!("mix_poly_coeffs").in_scope(|| {
             let mut cur_mix = H::ExtElem::ONE;
 
-            for (id, pg) in self.groups.iter().enumerate() {
-                let pg = pg.as_ref().unwrap();
+            for i in 0..n {
+                for (id, pg) in self.groups.iter().enumerate() {
+                    let pg = pg.as_ref().unwrap();
 
-                let group_size = self.taps.group_size(id);
-                let mut which = Vec::with_capacity(group_size);
-                for reg in self.taps.group_regs(id) {
-                    which.push(reg.combo_id() as u32);
+                    let group_size = self.taps.group_size(id);
+                    let mut which = Vec::with_capacity(group_size);
+                    for reg in self.taps.group_regs(id) {
+                        which.push(reg.combo_id() as u32);
+                    }
+                    let which = self.hal.copy_from_u32("which", which.as_slice());
+                    self.hal.mix_poly_coeffs(
+                        &combos,
+                        &cur_mix,
+                        &mix,
+                        &pg.coeffs,
+                        &which,
+                        group_size,
+                        self.cycles,
+                    );
+                    cur_mix *= mix.pow(group_size);
                 }
-                let which = self.hal.copy_from_u32("which", which.as_slice());
-                self.hal.mix_poly_coeffs(
-                    &combos,
-                    &cur_mix,
-                    &mix,
-                    &pg.coeffs_vec[0],
-                    &which,
-                    group_size,
-                    self.cycles,
-                );
-                cur_mix *= mix.pow(group_size);
             }
 
             let which = vec![combo_count as u32; H::CHECK_SIZE];
@@ -342,16 +350,19 @@ impl<'a, H: Hal> Prover<'a, H> {
                     let mut cur_pos = 0;
                     let mut cur = H::ExtElem::ONE;
                     // Subtract the U coeffs from the combos
-                    for reg in self.taps.regs() {
-                        for i in 0..reg.size() {
-                            combos[self.cycles * reg.combo_id() + i] -= cur * coeff_u[cur_pos + i];
+                    for index in 0..n {
+                        for reg in self.taps.regs() {
+                            for i in 0..reg.size() {
+                                combos[self.cycles * reg.combo_id() + i] -=
+                                    cur * coeff_u_vec[index][cur_pos + i];
+                            }
+                            cur *= mix;
+                            cur_pos += reg.size();
                         }
-                        cur *= mix;
-                        cur_pos += reg.size();
                     }
                     // Subtract the final 'check' coefficents
                     for _ in 0..H::CHECK_SIZE {
-                        combos[self.cycles * combo_count] -= cur * coeff_u[cur_pos];
+                        combos[self.cycles * combo_count] -= cur * coeff_u_vec[n][cur_pos];
                         cur_pos += 1;
                         cur *= mix;
                     }
