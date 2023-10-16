@@ -247,7 +247,7 @@ impl<'a, H: Hal> Prover<'a, H> {
         // Now, convert the values to coefficients via interpolation
         let mut coeff_u = vec![H::ExtElem::ZERO; eval_u.len()];
         let mut pos = 0;
-        for index in 0..num_traces {
+        for _ in 0..num_traces {
             tracing::info_span!("poly_interpolate").in_scope(|| {
                 for reg in self.taps.regs() {
                     poly_interpolate(
@@ -339,7 +339,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                     let mut cur_pos = 0;
                     let mut cur = H::ExtElem::ONE;
                     // Subtract the U coeffs from the combos
-                    for index in 0..num_traces {
+                    for _ in 0..num_traces {
                         for reg in self.taps.regs() {
                             for i in 0..reg.size() {
                                 combos[self.cycles * reg.combo_id() + i] -=
