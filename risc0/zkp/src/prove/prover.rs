@@ -158,22 +158,21 @@ impl<'a, H: Hal> Prover<'a, H> {
                 }
             }
         });
-
         // Convert to coefficients.  Some tricky bizness here with the fact that
         // checkPoly is really an Fp4 polynomial.  Nicely for us, since all the
         // roots of unity (which are the only thing that and values get multiplied
         // by) are in Fp, Fp4 values act like simple vectors of Fp for the
         // purposes of interpolate/evaluate.
-        let first_poly = check_poly_vec.first().unwrap();
-        let final_poly = check_poly_vec
-            .iter()
-            .skip(1)
-            .fold(first_poly, |acc, check_poly| {
-                let prev = acc;
-                self.hal.eltwise_add_elem(&acc, &prev, check_poly);
-                acc
-            })
-            .to_owned();
+        let final_poly = self
+            .hal
+            .alloc_elem("final_poly", check_poly_vec.first().unwrap().size());
+        for check_poly in check_poly_vec {
+            let prev = self.hal.alloc_elem("prev", final_poly.size());
+            self.hal.eltwise_copy_elem(&prev, &final_poly);
+            // Currently we are not adding the challenge from the verifier
+            self.hal.eltwise_add_elem(&final_poly, &prev, &check_poly);
+        }
+
         self.hal.batch_interpolate_ntt(&final_poly, ext_size);
 
         // The next step is to convert the degree 4*n check polynomial into 4 degreen n
