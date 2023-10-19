@@ -296,41 +296,42 @@ impl<'a, H: Hal> Prover<'a, H> {
         let combos = self.hal.copy_from_extelem("combos", combos.as_slice());
         tracing::info_span!("mix_poly_coeffs").in_scope(|| {
             let mut cur_mix = H::ExtElem::ONE;
-            for index in 0..num_traces {
-                for (id, pg) in self.groups.iter().enumerate() {
-                    let pg = pg.as_ref().unwrap();
+            for (id, pg) in self.groups.iter().enumerate() {
+                let pg = pg.as_ref().unwrap();
 
-                    let group_size = self.taps.group_size(id);
-                    // let mut which = Vec::with_capacity(group_size);
-                    let mut which =
-                        vec![(group_size * num_traces * 10) as u32; group_size * num_traces];
-                    let mut this_which = Vec::with_capacity(group_size);
-                    for reg in self.taps.group_regs(id) {
-                        this_which.push((reg.combo_id() + combo_count * index) as u32);
-                    }
-                    for i in 0..this_which.len() {
-                        which[i + group_size * index] = this_which[i];
-                    }
-                    let which = self.hal.copy_from_u32("which", which.as_slice());
-                    let mut input_coeffs = vec![];
-                    for _ in 0..num_traces {
-                        pg.coeffs_vec[0].view(|buf| input_coeffs.extend_from_slice(buf));
-                    }
-                    let input_coeffs = self
-                        .hal
-                        .copy_from_elem("input coeffs", input_coeffs.as_slice());
-                    self.hal.mix_poly_coeffs(
-                        &combos,
-                        &cur_mix,
-                        &mix,
-                        // &pg.coeffs_vec[0],
-                        &input_coeffs,
-                        &which,
-                        group_size * num_traces,
-                        self.cycles,
-                    );
-                    cur_mix *= mix.pow(group_size);
+                let group_size = self.taps.group_size(id);
+                // let mut which = Vec::with_capacity(group_size);
+                let mut which =
+                    vec![(group_size * num_traces * 10) as u32; group_size * num_traces];
+                let mut this_which = Vec::with_capacity(group_size);
+                for reg in self.taps.group_regs(id) {
+                    this_which.push((reg.combo_id()) as u32);
                 }
+                for trace_index in 0..num_traces {
+                    for i in 0..this_which.len() {
+                        which[i + group_size * trace_index] =
+                            this_which[i] + (combo_count * trace_index) as u32;
+                    }
+                }
+                let which = self.hal.copy_from_u32("which", which.as_slice());
+                let mut input_coeffs = vec![];
+                for _ in 0..num_traces {
+                    pg.coeffs_vec[0].view(|buf| input_coeffs.extend_from_slice(buf));
+                }
+                let input_coeffs = self
+                    .hal
+                    .copy_from_elem("input coeffs", input_coeffs.as_slice());
+                self.hal.mix_poly_coeffs(
+                    &combos,
+                    &cur_mix,
+                    &mix,
+                    // &pg.coeffs_vec[0],
+                    &input_coeffs,
+                    &which,
+                    group_size * num_traces,
+                    self.cycles,
+                );
+                cur_mix *= mix.pow(group_size);
             }
 
             let which = vec![(combo_count * num_traces) as u32; H::CHECK_SIZE];
