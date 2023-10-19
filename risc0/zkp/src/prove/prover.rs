@@ -285,7 +285,8 @@ impl<'a, H: Hal> Prover<'a, H> {
         self.iop.commit(&hash_u);
 
         // Set the mix mix value, which is used for FRI batching.
-        let mix = self.iop.random_ext_elem();
+        // let mix = self.iop.random_ext_elem();
+        let mix = H::ExtElem::ONE;
         log::debug!("Mix = {mix:?}");
 
         // Do the coefficent mixing
@@ -300,25 +301,39 @@ impl<'a, H: Hal> Prover<'a, H> {
                     let pg = pg.as_ref().unwrap();
 
                     let group_size = self.taps.group_size(id);
-                    let mut which = Vec::with_capacity(group_size);
+                    // let mut which = Vec::with_capacity(group_size);
+                    let mut which =
+                        vec![(group_size * num_traces * 10) as u32; group_size * num_traces];
+                    let mut this_which = Vec::with_capacity(group_size);
                     for reg in self.taps.group_regs(id) {
-                        which.push(reg.combo_id() as u32);
+                        this_which.push((reg.combo_id() + combo_count * index) as u32);
+                    }
+                    for i in 0..this_which.len() {
+                        which[i + group_size * index] = this_which[i];
                     }
                     let which = self.hal.copy_from_u32("which", which.as_slice());
+                    let mut input_coeffs = vec![];
+                    for _ in 0..num_traces {
+                        pg.coeffs_vec[0].view(|buf| input_coeffs.extend_from_slice(buf));
+                    }
+                    let input_coeffs = self
+                        .hal
+                        .copy_from_elem("input coeffs", input_coeffs.as_slice());
                     self.hal.mix_poly_coeffs(
                         &combos,
                         &cur_mix,
                         &mix,
-                        &pg.coeffs_vec[index],
+                        // &pg.coeffs_vec[0],
+                        &input_coeffs,
                         &which,
-                        group_size,
+                        group_size * num_traces,
                         self.cycles,
                     );
                     cur_mix *= mix.pow(group_size);
                 }
             }
 
-            let which = vec![combo_count as u32; H::CHECK_SIZE];
+            let which = vec![(combo_count * num_traces) as u32; H::CHECK_SIZE];
             let which_buf = self.hal.copy_from_u32("which", which.as_slice());
             self.hal.mix_poly_coeffs(
                 &combos,
@@ -329,6 +344,16 @@ impl<'a, H: Hal> Prover<'a, H> {
                 H::CHECK_SIZE,
                 self.cycles,
             );
+        });
+
+        println!("Combos constructed for traces");
+        combos.view_mut(|combos| {
+            combos
+                .chunks_exact(self.cycles)
+                .zip(0..combos.len())
+                .for_each(|(combo, i)| {
+                    println!("ID: {}, combo_0: {:?}", i % combo_count, combo[0])
+                });
         });
 
         // Load the near final coefficients back to the CPU
