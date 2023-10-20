@@ -235,8 +235,13 @@ impl<'a, H: Hal> Prover<'a, H> {
                     let which = self.hal.copy_from_u32("which", which.as_slice());
                     let xs = self.hal.copy_from_extelem("xs", xs.as_slice());
                     let out = self.hal.alloc_extelem("out", which.size());
-                    self.hal
-                        .batch_evaluate_any(&pg.coeffs_vec[index], pg.count, &which, &xs, &out);
+                    self.hal.batch_evaluate_any(
+                        &pg.coeffs_vec[index * 0],
+                        pg.count,
+                        &which,
+                        &xs,
+                        &out,
+                    );
                     out.view(|view| {
                         eval_u.extend(view);
                     });
@@ -347,47 +352,94 @@ impl<'a, H: Hal> Prover<'a, H> {
             );
         });
 
-        println!("Combos constructed for traces");
-        combos.view_mut(|combos| {
-            combos
-                .chunks_exact(self.cycles)
-                .zip(0..combos.len())
-                .for_each(|(combo, i)| {
-                    println!("ID: {}, combo_0: {:?}", i % combo_count, combo[0])
-                });
-        });
+        // println!("Combos constructed for traces");
+        // combos.view_mut(|combos| {
+        //     combos
+        //         .chunks_exact(self.cycles)
+        //         .zip(0..combos.len())
+        //         .for_each(|(combo, i)| {
+        //             println!("ID: {}, combo_0: {:?}", i % combo_count, combo[0])
+        //         });
+        // });
 
+        let coeffs_parts: Vec<_> = coeff_u
+            .chunks_exact((coeff_u.len() - H::CHECK_SIZE) / num_traces)
+            .map(|part| part.to_owned())
+            .collect();
+        let first_part_coeff = &coeffs_parts[0];
+        for coeff_part in coeffs_parts.iter() {
+            assert_eq!(coeff_part, first_part_coeff, "parts of coeffs not equal");
+        }
         // Load the near final coefficients back to the CPU
         tracing::info_span!("load_combos").in_scope(|| {
-            combos.view_mut(|combos| {
+            combos.view_mut(|combos_view| {
                 tracing::info_span!("part1").in_scope(|| {
-                    let mut cur_pos = 0;
-                    let mut cur = H::ExtElem::ONE;
-                    // Subtract the U coeffs from the combos
-                    for _ in 0..num_traces {
-                        for reg in self.taps.regs() {
-                            for i in 0..reg.size() {
-                                combos[self.cycles * reg.combo_id() + i] -=
-                                    cur * coeff_u[cur_pos + i];
+                    let mut glob_cur_pos = 0;
+                    combos_view
+                        .chunks_exact_mut(self.cycles * combo_count)
+                        .enumerate()
+                        .for_each(|(_trace_id, trace_combo)| {
+                            // println!("Combos before substracting for trace {}", _trace_id);
+                            // trace_combo
+                            //     .chunks_exact(self.cycles)
+                            //     .zip(0..trace_combo.len())
+                            //     .for_each(|(combo, i)| {
+                            //         println!("ID: {}, combo_0: {:?}", i % combo_count, combo[0])
+                            //     });
+                            // println!("Substract in trace: {}", _trace_id);
+                            // println!("combo chunk columns: {}", trace_combo.len() / self.cycles);
+                            let mut cur_pos = 0;
+                            let mut cur = mix.pow(0);
+                            // Subtract the U coeffs from the combos
+                            // println!("trace combo len: {}", trace_combo.len());
+                            // println!("combo count: {}", combo_count);
+                            for reg in self.taps.regs() {
+                                // println!("\treg.combo_id: {}", reg.combo_id());
+                                // println!("\treg.size: {}", reg.size());
+                                let coeff_u = &coeffs_parts[_trace_id];
+                                for i in 0..reg.size() {
+                                    trace_combo[self.cycles * reg.combo_id() + i] -=
+                                        cur * coeff_u[cur_pos + i];
+                                }
+                                cur *= mix;
+                                cur_pos += reg.size();
                             }
-                            cur *= mix;
-                            cur_pos += reg.size();
-                        }
-                    }
+                            glob_cur_pos = cur_pos;
+                            // println!("Combos after substracting for trace {}", _trace_id);
+                            // trace_combo
+                            //     .chunks_exact(self.cycles)
+                            //     .zip(0..trace_combo.len())
+                            //     .for_each(|(combo, i)| {
+                            //         println!("ID: {}, combo_0: {:?}", i % combo_count, combo[0])
+                            //     });
+                        });
                     // Subtract the final 'check' coefficents
+                    glob_cur_pos *= num_traces;
+                    let mut cur_pos = glob_cur_pos;
+                    let mut cur = mix.pow(0);
                     for _ in 0..H::CHECK_SIZE {
-                        combos[self.cycles * combo_count * num_traces] -= cur * coeff_u[cur_pos];
+                        combos_view[self.cycles * combo_count * num_traces] -=
+                            cur * coeff_u[cur_pos];
                         cur_pos += 1;
                         cur *= mix;
                     }
                 });
+
+                // println!("Combos after substracting");
+                // combos_view
+                //     .chunks_exact(self.cycles)
+                //     .zip(0..combos_view.len())
+                //     .for_each(|(combo, i)| {
+                //         println!("ID: {}, combo_0: {:?}", i % combo_count, combo[0])
+                //     });
+
                 // Divide each element by (x - Z * back1^back) for each back
                 tracing::info_span!("part2").in_scope(|| {
-                    combos
+                    combos_view
                         .par_chunks_exact_mut(self.cycles)
                         .zip(0..combo_count * num_traces)
                         .for_each(|(combo, i)| {
-                            for back in self.taps.get_combo(i).slice() {
+                            for back in self.taps.get_combo(i % combo_count).slice() {
                                 assert_eq!(
                                     poly_divide(combo, z * back_one.pow((*back).into())),
                                     H::ExtElem::ZERO
@@ -397,7 +449,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                 });
                 tracing::info_span!("part3").in_scope(|| {
                     // Divide check polys by z^EXT_SIZE
-                    let slice = &mut combos[num_traces * combo_count * self.cycles
+                    let slice = &mut combos_view[num_traces * combo_count * self.cycles
                         ..num_traces * combo_count * self.cycles + self.cycles];
                     assert_eq!(poly_divide(slice, z_pow), H::ExtElem::ZERO);
                 });
