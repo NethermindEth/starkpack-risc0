@@ -379,6 +379,8 @@ impl<'a, H: Hal> Prover<'a, H> {
         });
         // Sum the combos up into one final polynomial + make it into 4 Fp polys.
         // Additionally, it needs to be bit reversed to make everyone happy
+
+        //maybe we should multiply with the number of traces here
         let final_poly_coeffs = self
             .hal
             .alloc_elem("final_poly_coeffs", self.cycles * ext_size);

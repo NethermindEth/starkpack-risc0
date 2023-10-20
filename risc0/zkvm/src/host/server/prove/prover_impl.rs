@@ -174,7 +174,8 @@ where
             index: seg_index,
             hashfn: hashfn.clone(),
         };
-        receipt.verify_with_context(ctx)?;
+        let num_traces = adapters.len();
+        receipt.verify_with_context(num_traces, ctx)?;
 
         Ok(receipt)
     }

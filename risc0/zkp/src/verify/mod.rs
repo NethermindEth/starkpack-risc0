@@ -19,7 +19,8 @@ mod merkle;
 mod read_iop;
 
 use alloc::{vec, vec::Vec};
-use core::{cell::RefCell, fmt, iter::zip};
+use core::{cell::RefCell, fmt, iter::zip, num};
+use rayon::result;
 
 pub(crate) use merkle::MerkleTreeVerifier;
 pub use read_iop::ReadIOP;
@@ -92,8 +93,8 @@ where
     suite: &'a HashSuite<F>,
     po2: u32,
     steps: usize,
-    out: Option<&'a [F::Elem]>,
-    mix: Vec<F::Elem>,
+    out_vec: Vec<Option<&'a [F::Elem]>>,
+    mix_vec: Vec<Vec<F::Elem>>,
     tap_cache: RefCell<Option<TapCache<F>>>,
 }
 
@@ -110,8 +111,8 @@ where
             suite,
             po2: 0,
             steps: 0,
-            out: None,
-            mix: Vec::new(),
+            out_vec: vec![],
+            mix_vec: vec![],
             tap_cache: RefCell::new(None),
         }
     }
@@ -120,6 +121,7 @@ where
     #[allow(clippy::too_many_arguments)]
     fn fri_eval_taps(
         &self,
+        num_traces: usize,
         taps: &TapSet<'static>,
         mix: F::ExtElem,
         combo_u: &[F::ExtElem],
@@ -129,7 +131,7 @@ where
         z: F::ExtElem,
         rows: [&[F::Elem]; 3],
     ) -> F::ExtElem {
-        let mut tot = vec![F::ExtElem::ZERO; taps.combos_size() + 1];
+        let mut tot = vec![F::ExtElem::ZERO; num_traces * taps.combos_size() + 1];
         let combo_count = taps.combos_size();
         let x = F::ExtElem::from_subfield(&x);
 
@@ -140,6 +142,7 @@ where
                 tap_cache.take();
             }
         }
+        //This may need to be modified
         if tap_cache.is_none() {
             let mut cur_mix = F::ExtElem::ONE;
             let mut tap_mix_pows = Vec::with_capacity(taps.reg_count());
@@ -166,29 +169,36 @@ where
             });
         }
         let tap_cache = tap_cache.as_ref().unwrap();
-
-        for (reg, cur) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()) {
-            tot[reg.combo_id()] += *cur * rows[reg.group()][reg.offset()];
+        for index in 0..num_traces {
+            for (reg, cur) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()) {
+                tot[index * combo_count + reg.combo_id()] +=
+                //This may not be the reg.size() this may be the group_size
+                *cur * rows[reg.group()][index * reg.size() + reg.offset()];
+            }
         }
         for (i, cur) in zip(0..Self::CHECK_SIZE, tap_cache.check_mix_pows.iter()) {
-            tot[combo_count] += *cur * check_row[i];
+            tot[num_traces * combo_count] += *cur * check_row[i];
         }
         let mut ret = F::ExtElem::ZERO;
-        for i in 0..combo_count {
-            let num = tot[i]
-                - self.poly_eval(
-                    &combo_u[taps.combo_begin[i] as usize..taps.combo_begin[i + 1] as usize],
-                    x,
-                );
-            let mut divisor = F::ExtElem::ONE;
-            for back in taps.get_combo(i).slice() {
-                divisor *= x - z * back_one.pow(*back as usize);
+        for index in 0..num_traces {
+            for i in 0..combo_count {
+                let num = tot[index * combo_count + i]
+                    - self.poly_eval(
+                        &combo_u[index * combo_count + (taps.combo_begin[i] as usize)
+                            ..index * combo_count + (taps.combo_begin[i + 1] as usize)],
+                        x,
+                    );
+                let mut divisor = F::ExtElem::ONE;
+                for back in taps.get_combo(i).slice() {
+                    divisor *= x - z * back_one.pow(*back as usize);
+                }
+                ret += num * divisor.inv();
             }
-            ret += num * divisor.inv();
         }
-        let check_num = tot[combo_count] - combo_u[taps.tot_combo_backs];
+        let check_num = tot[num_traces * combo_count] - combo_u[num_traces * taps.tot_combo_backs];
         let check_div = x - z.pow(INV_RATE);
         ret += check_num * check_div.inv();
+
         ret
     }
 
@@ -196,6 +206,7 @@ where
         &mut self,
         seal: &'a [u32],
         check_code: CheckCodeFn,
+        num_traces: usize,
     ) -> Result<(), VerificationError>
     where
         CheckCodeFn: Fn(u32, &Digest) -> Result<(), VerificationError>,
@@ -211,7 +222,7 @@ where
         let mut iop = ReadIOP::new(seal, self.suite.rng.as_ref());
 
         // Read any execution state
-        self.execute(&mut iop);
+        self.execute(num_traces, &mut iop);
 
         // Get the size
         assert!(self.po2 as usize <= MAX_CYCLES_PO2);
@@ -228,7 +239,8 @@ where
         // The code merkle tree contains the control instructions for the zkVM.
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("code_merkle");
-        let code_merkle = MerkleTreeVerifier::new(&mut iop, hashfn, domain, code_size, QUERIES);
+        let code_merkle =
+            MerkleTreeVerifier::new(&mut iop, hashfn, domain, num_traces * code_size, QUERIES);
         // log::debug!("codeRoot = {}", code_merkle.root());
         check_code(self.po2, code_merkle.root())?;
 
@@ -238,14 +250,18 @@ where
         // accesses sorted by location used by PLONK.
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("data_merkle");
-        let data_merkle = MerkleTreeVerifier::new(&mut iop, hashfn, domain, data_size, QUERIES);
+        let data_merkle =
+            MerkleTreeVerifier::new(&mut iop, hashfn, domain, num_traces * data_size, QUERIES);
         // log::debug!("dataRoot = {}", data_merkle.root());
 
         // Prep accumulation
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("accumulate");
         // Fill in accum mix
-        self.mix = (0..C::MIX_SIZE).map(|_| iop.random_elem()).collect();
+        for _ in 0..num_traces {
+            self.mix_vec
+                .push((0..C::MIX_SIZE).map(|_| iop.random_elem()).collect());
+        }
 
         // Get merkle root for the accum merkle tree.
         // The accum merkle tree contains the accumulations for two permutation check
@@ -258,16 +274,22 @@ where
         // implement a look-up table.
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("accum_merkle");
-        let accum_merkle = MerkleTreeVerifier::new(&mut iop, hashfn, domain, accum_size, QUERIES);
+        let accum_merkle =
+            MerkleTreeVerifier::new(&mut iop, hashfn, domain, num_traces * accum_size, QUERIES);
         // log::debug!("accumRoot = {}", accum_merkle.root());
 
         // Get a pseudorandom value with which to mix the constraint polynomials.
         // See DEEP-ALI protocol from DEEP-FRI paper for details on constraint mixing.
-        let poly_mix = iop.random_ext_elem();
+        let poly_mix_vec: Vec<<F as Field>::ExtElem> =
+            (0..num_traces).map(|_| iop.random_ext_elem()).collect();
+        //let mut poly_mix_vec = Vec::new();
+        //for _ in 0..num_traces {
+        //    poly_mix_vec.push(iop.random_ext_elem());
+        //}
 
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("check_merkle");
-        let check_merkle =
+        let check_merkle: MerkleTreeVerifier<'_> =
             MerkleTreeVerifier::new(&mut iop, hashfn, domain, Self::CHECK_SIZE, QUERIES);
         // log::debug!("checkRoot = {}", check_merkle.root());
 
@@ -278,34 +300,48 @@ where
         let back_one = F::Elem::ROU_REV[self.po2 as usize];
 
         // Read the U coeffs (the interpolations of the taps) + commit their hash.
-        let num_taps = taps.tap_size();
-        let coeff_u = iop.read_field_elem_slice(num_taps + Self::CHECK_SIZE);
+        let num_taps: usize = taps.tap_size();
+        let coeff_u = iop.read_field_elem_slice(num_traces * num_taps + Self::CHECK_SIZE);
         let hash_u = self.suite.hashfn.hash_ext_elem_slice(coeff_u);
         iop.commit(&hash_u);
 
         // Now, convert U polynomials from coefficient form to evaluation form
         let mut cur_pos = 0;
-        let mut eval_u = Vec::with_capacity(num_taps);
-        for reg in taps.regs() {
-            for i in 0..reg.size() {
-                let x = z * back_one.pow(reg.back(i));
-                let fx = self.poly_eval(&coeff_u[cur_pos..(cur_pos + reg.size())], x);
-                eval_u.push(fx);
+        let mut eval_u = Vec::with_capacity(num_traces * num_taps);
+        for _ in 0..num_traces {
+            for reg in taps.regs() {
+                for i in 0..reg.size() {
+                    let x = z * back_one.pow(reg.back(i));
+                    let fx = self.poly_eval(&coeff_u[cur_pos..(cur_pos + reg.size())], x);
+                    eval_u.push(fx);
+                }
+                cur_pos += reg.size();
             }
-            cur_pos += reg.size();
         }
-        assert_eq!(eval_u.len(), num_taps, "Miscalculated capacity for eval_us");
+
+        assert_eq!(
+            eval_u.len(),
+            num_traces * num_taps,
+            "Miscalculated capacity for eval_us"
+        );
 
         // Compute the core constraint polynomial.
         // I.e. the set of all constraints mixed by poly_mix
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("> compute_polynomial");
         // let result = self.compute_polynomial(&eval_u, poly_mix);
-        let result = self
-            .circuit
-            .poly_ext(&poly_mix, &eval_u, &[self.out.unwrap(), &self.mix])
-            .tot;
-
+        let mut result_vec = Vec::new();
+        for index in 0..num_traces {
+            result_vec.push(
+                self.circuit
+                    .poly_ext(
+                        &poly_mix_vec[index],
+                        &eval_u[index * num_taps..(index + 1) * num_taps],
+                        &[self.out_vec[index].unwrap(), &self.mix_vec[index]],
+                    )
+                    .tot,
+            )
+        }
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("< compute_polynomial");
         // log::debug!("Result = {result:?}");
@@ -316,31 +352,36 @@ where
         // accessed) only working in the extension degree = 4 case.
         // However, for generic fields the extension degree may be different
         // TODO: Therefore just using the to/from baby bear shims for now
+
+        //Not sure if this works
         let mut check = F::ExtElem::default();
         let remap = [0, 2, 1, 3];
         let fp0 = F::Elem::ZERO;
         let fp1 = F::Elem::ONE;
         for (i, rmi) in remap.iter().enumerate() {
-            check += coeff_u[num_taps + rmi]
+            check += coeff_u[num_traces * num_taps + rmi]
                 * z.pow(i)
                 * F::ExtElem::from_subelems([fp1, fp0, fp0, fp0]);
-            check += coeff_u[num_taps + rmi + 4]
+            check += coeff_u[num_traces * num_taps + rmi + 4]
                 * z.pow(i)
                 * F::ExtElem::from_subelems([fp0, fp1, fp0, fp0]);
-            check += coeff_u[num_taps + rmi + 8]
+            check += coeff_u[num_traces * num_taps + rmi + 8]
                 * z.pow(i)
                 * F::ExtElem::from_subelems([fp0, fp0, fp1, fp0]);
-            check += coeff_u[num_taps + rmi + 12]
+            check += coeff_u[num_traces * num_taps + rmi + 12]
                 * z.pow(i)
                 * F::ExtElem::from_subelems([fp0, fp0, fp0, fp1]);
         }
         let three = F::Elem::from_u64(3);
         check *= (F::ExtElem::from_subfield(&three) * z).pow(size) - F::ExtElem::ONE;
         // log::debug!("Check = {check:?}");
-        if check != result {
+        let mut final_result = F::ExtElem::default();
+        for index in 0..num_traces {
+            final_result += result_vec[index];
+        }
+        if check != final_result {
             return Err(VerificationError::InvalidProof);
         }
-
         // Set the mix mix value, pseudorandom value used for FRI batching
         let mix = iop.random_ext_elem();
         // log::debug!("mix = {mix:?}");
@@ -350,29 +391,32 @@ where
         // These columns share a denominator in the DEEP-ALI equation.
         // We group these terms together to reduce the number of inverses we
         // need to compute.
-        let mut combo_u: Vec<F::ExtElem> = vec![F::ExtElem::ZERO; taps.tot_combo_backs + 1];
+        let mut combo_u: Vec<F::ExtElem> =
+            vec![F::ExtElem::ZERO; num_traces * taps.tot_combo_backs + 1];
         let mut cur_mix = F::ExtElem::ONE;
         cur_pos = 0;
-        let mut tap_mix_pows = Vec::with_capacity(taps.reg_count());
-        for reg in taps.regs() {
-            for i in 0..reg.size() {
-                combo_u[taps.combo_begin[reg.combo_id()] as usize + i] +=
-                    cur_mix * coeff_u[cur_pos + i];
+        let mut tap_mix_pows = Vec::with_capacity(num_traces * taps.reg_count());
+        for index in 0..num_traces {
+            for reg in taps.regs() {
+                for i in 0..reg.size() {
+                    combo_u[index * (taps.combo_begin[reg.combo_id()] as usize) + i] +=
+                        cur_mix * coeff_u[cur_pos + i];
+                }
+                tap_mix_pows.push(cur_mix);
+                cur_mix *= mix;
+                cur_pos += reg.size();
             }
-            tap_mix_pows.push(cur_mix);
-            cur_mix *= mix;
-            cur_pos += reg.size();
         }
         assert_eq!(
             tap_mix_pows.len(),
-            taps.reg_count(),
+            num_traces * taps.reg_count(),
             "Miscalculated capacity for tap_mix_pows"
         );
         // log::debug!("cur_mix: {cur_mix:?}, cur_pos: {cur_pos}");
         // Handle check group
         let mut check_mix_pows = Vec::with_capacity(Self::CHECK_SIZE);
         for _ in 0..Self::CHECK_SIZE {
-            combo_u[taps.tot_combo_backs] += cur_mix * coeff_u[cur_pos];
+            combo_u[num_traces * taps.tot_combo_backs] += cur_mix * coeff_u[cur_pos];
             cur_pos += 1;
             check_mix_pows.push(cur_mix);
             cur_mix *= mix;
@@ -395,16 +439,22 @@ where
                 data_merkle.verify(iop, hashfn, idx)?,
             ];
             let check_row = check_merkle.verify(iop, hashfn, idx)?;
-            let ret = self.fri_eval_taps(taps, mix, &combo_u, check_row, back_one, x, z, rows);
+            let ret = self.fri_eval_taps(
+                num_traces, taps, mix, &combo_u, check_row, back_one, x, z, rows,
+            );
             Ok(ret)
         })?;
         iop.verify_complete();
         Ok(())
     }
 
-    fn execute(&mut self, iop: &mut ReadIOP<'a, F>) {
+    fn execute(&mut self, num_traces: usize, iop: &mut ReadIOP<'a, F>) {
         // Read the outputs + size
-        self.out = Some(iop.read_field_elem_slice(C::OUTPUT_SIZE));
+        //TODO check if po2 should be set earlier or not
+        for _ in 0..num_traces {
+            self.out_vec
+                .push(Some(iop.read_field_elem_slice(C::OUTPUT_SIZE)));
+        }
         self.po2 = *iop.read_u32s(1).first().unwrap();
         self.steps = 1 << self.po2;
     }
@@ -430,11 +480,12 @@ pub fn verify<F, C, CheckCode>(
     suite: &HashSuite<F>,
     seal: &[u32],
     check_code: CheckCode,
+    num_traces: usize,
 ) -> Result<(), VerificationError>
 where
     F: Field,
     C: CircuitCoreDef<F>,
     CheckCode: Fn(u32, &Digest) -> Result<(), VerificationError>,
 {
-    Verifier::<F, C>::new(circuit, suite).verify(seal, check_code)
+    Verifier::<F, C>::new(circuit, suite).verify(seal, check_code, num_traces)
 }

@@ -352,7 +352,11 @@ impl Receipt {
 
 impl SegmentReceipt {
     /// Verify the integrity of this receipt.
-    pub fn verify_with_context(&self, ctx: &VerifierContext) -> Result<(), VerificationError> {
+    pub fn verify_with_context(
+        &self,
+        num_traces: usize,
+        ctx: &VerifierContext,
+    ) -> Result<(), VerificationError> {
         use hex::FromHex;
         let check_code = |_, control_id: &Digest| -> Result<(), VerificationError> {
             POSEIDON_CONTROL_ID
@@ -367,7 +371,7 @@ impl SegmentReceipt {
             .suites
             .get(&self.hashfn)
             .ok_or(VerificationError::InvalidHashSuite)?;
-        risc0_zkp::verify::verify(&super::CIRCUIT, suite, &self.seal, check_code)
+        risc0_zkp::verify::verify(&super::CIRCUIT, suite, &self.seal, check_code, num_traces)
     }
 
     /// Returns the [ReceiptMetadata] for this receipt.
