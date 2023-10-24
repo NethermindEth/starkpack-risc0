@@ -285,8 +285,7 @@ impl<'a, H: Hal> Prover<'a, H> {
         self.iop.commit(&hash_u);
 
         // Set the mix mix value, which is used for FRI batching.
-        // let mix = self.iop.random_ext_elem();
-        let mix = H::ExtElem::ONE;
+        let mix = self.iop.random_ext_elem();
         log::debug!("Mix = {mix:?}");
 
         // Do the coefficent mixing
@@ -296,42 +295,42 @@ impl<'a, H: Hal> Prover<'a, H> {
         let combos = self.hal.copy_from_extelem("combos", combos.as_slice());
         tracing::info_span!("mix_poly_coeffs").in_scope(|| {
             let mut cur_mix = H::ExtElem::ONE;
-            for (id, pg) in self.groups.iter().enumerate() {
-                let pg = pg.as_ref().unwrap();
+            combos.view_mut(|combos_view| {
+                combos_view
+                    .chunks_exact_mut(self.cycles * combo_count)
+                    .enumerate()
+                    .for_each(|(trace_id, combo_chunk)| {
+                        for (id, pg) in self.groups.iter().enumerate() {
+                            let pg = pg.as_ref().unwrap();
+                            let group_size = self.taps.group_size(id);
 
-                let group_size = self.taps.group_size(id);
-                let mut which =
-                    vec![(group_size * num_traces * 10) as u32; group_size * num_traces]; // use Some and none instead of a large u32
-                let mut this_which = Vec::with_capacity(group_size);
-                for reg in self.taps.group_regs(id) {
-                    this_which.push((reg.combo_id()) as u32);
-                }
-                for trace_index in 0..num_traces {
-                    for i in 0..this_which.len() {
-                        which[i + group_size * trace_index] =
-                            this_which[i] + (combo_count * trace_index) as u32;
-                    }
-                }
-                let which = self.hal.copy_from_u32("which", which.as_slice());
-                let mut input_coeffs = vec![];
-                for trace_id in 0..num_traces {
-                    pg.coeffs_vec[trace_id].view(|buf| input_coeffs.extend_from_slice(buf));
-                }
-                let input_coeffs = self
-                    .hal
-                    .copy_from_elem("input coeffs", input_coeffs.as_slice());
-                self.hal.mix_poly_coeffs(
-                    &combos,
-                    &cur_mix,
-                    &mix,
-                    // &pg.coeffs_vec[0],
-                    &input_coeffs,
-                    &which,
-                    group_size * num_traces,
-                    self.cycles,
-                );
-                cur_mix *= mix.pow(group_size);
-            }
+                            let mut this_which = Vec::with_capacity(group_size);
+                            for reg in self.taps.group_regs(id) {
+                                this_which.push((reg.combo_id()) as u32);
+                            }
+                            let which = self.hal.copy_from_u32("which", &this_which.as_slice());
+                            let combo_chunk_buf =
+                                self.hal.copy_from_extelem("combo_chunk", combo_chunk);
+                            self.hal.mix_poly_coeffs(
+                                &combo_chunk_buf,
+                                &cur_mix,
+                                &mix,
+                                &pg.coeffs_vec[trace_id],
+                                &which,
+                                group_size,
+                                self.cycles,
+                            );
+                            cur_mix *= mix.pow(group_size);
+
+                            combo_chunk_buf.view(|buf| {
+                                let place_holder = buf.to_owned();
+                                for i in 0..combo_chunk.len() {
+                                    combo_chunk[i] = place_holder[i];
+                                }
+                            });
+                        }
+                    })
+            });
 
             let which = vec![(combo_count * num_traces) as u32; H::CHECK_SIZE];
             let which_buf = self.hal.copy_from_u32("which", which.as_slice());
@@ -358,12 +357,12 @@ impl<'a, H: Hal> Prover<'a, H> {
                     combos_view
                         .chunks_exact_mut(self.cycles * combo_count)
                         .enumerate()
-                        .for_each(|(_trace_id, trace_combo)| {
+                        .for_each(|(trace_id, trace_combo)| {
                             let mut cur_pos = 0;
-                            let mut cur = mix.pow(0);
+                            let mut cur = mix.pow(275 * trace_id);
                             // Subtract the U coeffs from the combos
                             for reg in self.taps.regs() {
-                                let coeff_u = &coeffs_parts[_trace_id];
+                                let coeff_u = &coeffs_parts[trace_id];
                                 for i in 0..reg.size() {
                                     trace_combo[self.cycles * reg.combo_id() + i] -=
                                         cur * coeff_u[cur_pos + i];
@@ -376,7 +375,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                     // Subtract the final 'check' coefficents
                     glob_cur_pos *= num_traces;
                     let mut cur_pos = glob_cur_pos;
-                    let mut cur = mix.pow(0);
+                    let mut cur = mix.pow(275 * num_traces);
                     for _ in 0..H::CHECK_SIZE {
                         combos_view[self.cycles * combo_count * num_traces] -=
                             cur * coeff_u[cur_pos];
@@ -394,7 +393,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                             for back in self.taps.get_combo(i % combo_count).slice() {
                                 assert_eq!(
                                     poly_divide(combo, z * back_one.pow((*back).into())),
-                                    H::ExtElem::ZERO
+                                    H::ExtElem::ZERO,
                                 );
                             }
                         });
