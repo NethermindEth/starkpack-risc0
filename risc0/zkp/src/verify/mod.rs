@@ -19,8 +19,7 @@ mod merkle;
 mod read_iop;
 
 use alloc::{vec, vec::Vec};
-use core::{cell::RefCell, fmt, iter::zip, num};
-use rayon::result;
+use core::{cell::RefCell, fmt, iter::zip};
 
 pub(crate) use merkle::MerkleTreeVerifier;
 pub use read_iop::ReadIOP;
@@ -451,12 +450,15 @@ where
     fn execute(&mut self, num_traces: usize, iop: &mut ReadIOP<'a, F>) {
         // Read the outputs + size
         //TODO check if po2 should be set earlier or not
-        for _ in 0..num_traces {
+        self.out_vec
+            .push(Some(iop.read_field_elem_slice(C::OUTPUT_SIZE)));
+        self.po2 = *iop.read_u32s(1).first().unwrap();
+        println!("{}", self.po2);
+        self.steps = 1 << self.po2;
+        for _ in 1..num_traces {
             self.out_vec
                 .push(Some(iop.read_field_elem_slice(C::OUTPUT_SIZE)));
         }
-        self.po2 = *iop.read_u32s(1).first().unwrap();
-        self.steps = 1 << self.po2;
     }
 
     /// Evaluate a polynomial whose coefficients are in the extension field at a

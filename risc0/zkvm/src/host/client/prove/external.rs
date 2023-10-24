@@ -51,7 +51,7 @@ impl Prover for ExternalProver {
         let image_id = image.compute_id();
         let client = ApiClient::new_sub_process(&self.r0vm_path)?;
         let receipt = client.prove(&env, opts.clone(), image.try_into()?)?;
-        receipt.verify_with_context(ctx, image_id)?;
+        receipt.verify_with_context(1, ctx, image_id)?;
 
         Ok(receipt)
     }

@@ -105,7 +105,11 @@ pub struct SuccinctReceipt {
 
 impl SuccinctReceipt {
     /// Verify the integrity of this receipt.
-    pub fn verify_with_context(&self, ctx: &VerifierContext) -> Result<(), VerificationError> {
+    pub fn verify_with_context(
+        &self,
+        num_traces: usize,
+        ctx: &VerifierContext,
+    ) -> Result<(), VerificationError> {
         let valid_ids = valid_control_ids();
         let check_code = |_, control_id: &Digest| -> Result<(), VerificationError> {
             valid_ids
@@ -119,7 +123,7 @@ impl SuccinctReceipt {
             .get("poseidon")
             .ok_or(VerificationError::InvalidHashSuite)?;
         // Verify the receipt itself is correct
-        risc0_zkp::verify::verify(&CIRCUIT_CORE, suite, &self.seal, check_code)?;
+        risc0_zkp::verify::verify(&CIRCUIT_CORE, suite, &self.seal, check_code, num_traces)?;
         // Extract the globals from the seal
         let output_elems: &[BabyBearElem] =
             bytemuck::cast_slice(&self.seal[..CircuitImpl::OUTPUT_SIZE]);

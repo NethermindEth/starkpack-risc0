@@ -63,6 +63,7 @@ where
         /* Here we start changing the code to introduce StarkPack */
         log::info!("prove_session: {}", self.name);
         let pack_segments = pack_session.resolve_packed_segments()?;
+        let num_traces = pack_segments.len();
         let mut segments = Vec::new();
         for pack_segment in pack_segments {
             segments.push(
@@ -91,7 +92,7 @@ where
             .resolve()?
             .pre_image
             .compute_id();
-        receipt.verify_with_context(ctx, image_id)?;
+        receipt.verify_with_context(num_traces, ctx, image_id)?;
         Ok(receipt)
     }
 
@@ -121,7 +122,7 @@ where
         prover.set_po2(adapters[0].po2() as usize); // All adapters already are set at the po2
                                                     // of the largest segment, because of executor,
                                                     // so we grab the first one
-
+        println!("PRovers po2 {} ", adapters[0].po2() as usize);
         let code_vec = adapters
             .iter()
             .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
