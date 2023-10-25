@@ -122,7 +122,7 @@ where
         prover.set_po2(adapters[0].po2() as usize); // All adapters already are set at the po2
                                                     // of the largest segment, because of executor,
                                                     // so we grab the first one
-        println!("PRovers po2 {} ", adapters[0].po2() as usize);
+
         let code_vec = adapters
             .iter()
             .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))

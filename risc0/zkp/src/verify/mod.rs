@@ -449,11 +449,9 @@ where
 
     fn execute(&mut self, num_traces: usize, iop: &mut ReadIOP<'a, F>) {
         // Read the outputs + size
-        //TODO check if po2 should be set earlier or not
         self.out_vec
             .push(Some(iop.read_field_elem_slice(C::OUTPUT_SIZE)));
         self.po2 = *iop.read_u32s(1).first().unwrap();
-        println!("{}", self.po2);
         self.steps = 1 << self.po2;
         for _ in 1..num_traces {
             self.out_vec
