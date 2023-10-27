@@ -353,13 +353,12 @@ impl<'a, H: Hal> Prover<'a, H> {
         tracing::info_span!("load_combos").in_scope(|| {
             combos.view_mut(|combos_view| {
                 tracing::info_span!("part1").in_scope(|| {
-                    let mut glob_cur_pos = 0;
+                    let mut cur_pos = 0;
+                    let mut cur = H::ExtElem::ONE;
                     combos_view
                         .chunks_exact_mut(self.cycles * combo_count)
                         .enumerate()
                         .for_each(|(trace_id, trace_combo)| {
-                            let mut cur_pos = 0;
-                            let mut cur = mix.pow(275 * trace_id);
                             // Subtract the U coeffs from the combos
                             for reg in self.taps.regs() {
                                 let coeff_u = &coeffs_parts[trace_id];
@@ -370,12 +369,11 @@ impl<'a, H: Hal> Prover<'a, H> {
                                 cur *= mix;
                                 cur_pos += reg.size();
                             }
-                            glob_cur_pos = cur_pos;
                         });
                     // Subtract the final 'check' coefficents
-                    glob_cur_pos *= num_traces;
-                    let mut cur_pos = glob_cur_pos;
-                    let mut cur = mix.pow(275 * num_traces);
+                    //glob_cur_pos *= num_traces;
+                    //let mut cur_pos = glob_cur_pos;
+                    //let mut cur = mix.pow(275 * num_traces);
                     for _ in 0..H::CHECK_SIZE {
                         combos_view[self.cycles * combo_count * num_traces] -=
                             cur * coeff_u[cur_pos];
