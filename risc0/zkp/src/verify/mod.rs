@@ -171,8 +171,8 @@ where
         for index in 0..num_traces {
             for (reg, cur) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()) {
                 tot[index * combo_count + reg.combo_id()] +=
-                //This may not be the reg.size() this may be the group_size
-                *cur * rows[reg.group()][index * taps.group_size(reg.group()) + reg.offset()];
+                //This may not be the reg.size() this may be the taps.group_size(reg.group())
+                *cur * rows[reg.group()][index * reg.size() + reg.offset()];
             }
         }
         for (i, cur) in zip(0..Self::CHECK_SIZE, tap_cache.check_mix_pows.iter()) {

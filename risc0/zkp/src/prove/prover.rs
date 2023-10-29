@@ -345,10 +345,6 @@ impl<'a, H: Hal> Prover<'a, H> {
             );
         });
 
-        let coeffs_parts: Vec<_> = coeff_u
-            .chunks_exact((coeff_u.len() - H::CHECK_SIZE) / num_traces)
-            .map(|part| part.to_owned())
-            .collect();
         // Load the near final coefficients back to the CPU
         tracing::info_span!("load_combos").in_scope(|| {
             combos.view_mut(|combos_view| {
@@ -357,11 +353,9 @@ impl<'a, H: Hal> Prover<'a, H> {
                     let mut cur = H::ExtElem::ONE;
                     combos_view
                         .chunks_exact_mut(self.cycles * combo_count)
-                        .enumerate()
-                        .for_each(|(trace_id, trace_combo)| {
+                        .for_each(|trace_combo| {
                             // Subtract the U coeffs from the combos
                             for reg in self.taps.regs() {
-                                let coeff_u = &coeffs_parts[trace_id];
                                 for i in 0..reg.size() {
                                     trace_combo[self.cycles * reg.combo_id() + i] -=
                                         cur * coeff_u[cur_pos + i];
@@ -371,9 +365,6 @@ impl<'a, H: Hal> Prover<'a, H> {
                             }
                         });
                     // Subtract the final 'check' coefficents
-                    //glob_cur_pos *= num_traces;
-                    //let mut cur_pos = glob_cur_pos;
-                    //let mut cur = mix.pow(275 * num_traces);
                     for _ in 0..H::CHECK_SIZE {
                         combos_view[self.cycles * combo_count * num_traces] -=
                             cur * coeff_u[cur_pos];
