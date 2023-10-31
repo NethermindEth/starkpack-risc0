@@ -174,11 +174,7 @@ where
             for (reg, cur) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()) {
                 tot[index * combo_count + reg.combo_id()] +=
                 //This may not be the reg.size() this may be the taps.group_size(reg.group())
-<<<<<<< HEAD
-                *cur * rows[reg.group()][index * taps.group_size(reg.group())+ reg.offset()];
-=======
                 *cur * rows[reg.group()][index * taps.group_size(reg.group()) + reg.offset()];
->>>>>>> 04bdfb1 (tap_cache updated)
             }
         }
         for (i, cur) in zip(0..Self::CHECK_SIZE, tap_cache.check_mix_pows.iter()) {
@@ -245,11 +241,7 @@ where
         let code_merkle =
             MerkleTreeVerifier::new(&mut iop, hashfn, domain, num_traces * code_size, QUERIES);
         // log::debug!("codeRoot = {}", code_merkle.root());
-<<<<<<< HEAD
-        // check_code(self.po2, code_merkle.root())?;
-=======
         //check_code(self.po2, code_merkle.root())?;
->>>>>>> 04bdfb1 (tap_cache updated)
         let _ = check_code;
 
         // Get merkle root for the data merkle tree.
@@ -406,11 +398,8 @@ where
         for index in 0..num_traces {
             for reg in taps.regs() {
                 for i in 0..reg.size() {
-<<<<<<< HEAD
-=======
                     // combo_u[index * (taps.combo_begin[reg.combo_id()] as usize) + i] +=
                     //     cur_mix * coeff_u[cur_pos + i];
->>>>>>> 04bdfb1 (tap_cache updated)
                     combo_u[index * taps.tot_combo_backs
                         + (taps.combo_begin[reg.combo_id()] as usize)
                         + i] += cur_mix * coeff_u[cur_pos + i];
@@ -426,9 +415,9 @@ where
             num_traces * taps.reg_count(),
             "Miscalculated capacity for tap_mix_pows"
         );
-        println!("verifier cur_mix = {:?}", cur_mix);
         // log::debug!("cur_mix: {cur_mix:?}, cur_pos: {cur_pos}");
         // Handle check group
+        println!("v mix {:?}", cur_mix);
         let mut check_mix_pows = Vec::with_capacity(Self::CHECK_SIZE);
         for _ in 0..Self::CHECK_SIZE {
             combo_u[num_traces * taps.tot_combo_backs] += cur_mix * coeff_u[cur_pos];
@@ -473,11 +462,7 @@ where
         for _ in 1..num_traces {
             self.out_vec
                 .push(Some(iop.read_field_elem_slice(C::OUTPUT_SIZE)));
-<<<<<<< HEAD
-            self.po2 = *iop.read_u32s(1).first().unwrap();
-=======
-            let _ = *iop.read_u32s(1).first().unwrap();
->>>>>>> 04bdfb1 (tap_cache updated)
+            //let _ = *iop.read_u32s(1).first().unwrap();
         }
     }
 

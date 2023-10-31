@@ -64,10 +64,10 @@ where
 
     /// Perform initial 'execution' setting code + data.
     /// Additionally, write any 'results' as needed.
-    pub fn execute_first(&mut self, iop: &mut WriteIOP<F>) {
+    pub fn execute(&mut self, iop: &mut WriteIOP<F>) {
         iop.write_field_elem_slice(&self.exec.io.as_slice());
     }
-    pub fn execute(&mut self, iop: &mut WriteIOP<F>) {
+    pub fn execute_first(&mut self, iop: &mut WriteIOP<F>) {
         iop.write_field_elem_slice(&self.exec.io.as_slice());
         iop.write_u32_slice(&[self.exec.po2 as u32]);
     }

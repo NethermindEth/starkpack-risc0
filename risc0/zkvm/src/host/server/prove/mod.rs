@@ -241,7 +241,9 @@ mod cpu {
     use anyhow::{bail, Result};
     use risc0_circuit_rv32im::cpu::CpuCircuitHal;
     use risc0_zkp::{
-        core::hash::{poseidon::PoseidonHashSuite, sha::Sha256HashSuite},
+        core::hash::{
+            blake2b::Blake2bCpuHashSuite, poseidon::PoseidonHashSuite, sha::Sha256HashSuite,
+        },
         hal::cpu::CpuHal,
     };
 
@@ -252,6 +254,7 @@ mod cpu {
         let suite = match opts.hashfn.as_str() {
             "sha-256" => Sha256HashSuite::new_suite(),
             "poseidon" => PoseidonHashSuite::new_suite(),
+            "blake2b" => Blake2bCpuHashSuite::new_suite(),
             _ => bail!("Unsupported hashfn: {}", opts.hashfn),
         };
         let hal = Rc::new(CpuHal::new(suite));

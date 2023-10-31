@@ -332,7 +332,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                         }
                     })
             });
-
+            println!("p mix {:?}", cur_mix);
             let which = vec![(combo_count * num_traces) as u32; H::CHECK_SIZE];
             let which_buf = self.hal.copy_from_u32("which", which.as_slice());
             self.hal.mix_poly_coeffs(

@@ -121,7 +121,8 @@ pub struct ProverOpts {
 impl Default for ProverOpts {
     fn default() -> Self {
         Self {
-            hashfn: "sha-256".to_string(),
+            // hashfn: "sha-256".to_string(),
+            hashfn: "blake2b".to_string(),
         }
     }
 }

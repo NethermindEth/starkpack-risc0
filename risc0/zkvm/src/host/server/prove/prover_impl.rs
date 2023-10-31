@@ -119,12 +119,18 @@ where
 
         let mut prover: risc0_zkp::prove::Prover<'_, H> =
             risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
-        for adapter in adapters.iter_mut() {
-            adapter.execute(prover.iop());
+        let num_traces = adapters.len();
+        adapters[0].execute_first(prover.iop());
+        prover.set_po2(adapters[0].po2() as usize);
+        // for adapter in adapters.skip(1).iter_mut() {
+        //     adapter.execute(prover.iop());
+        // }
+        for i in 1..num_traces {
+            adapters[i].execute(prover.iop());
         }
-        prover.set_po2(adapters[0].po2() as usize); // All adapters already are set at the po2
-                                                    // of the largest segment, because of executor,
-                                                    // so we grab the first one
+        // All adapters already are set at the po2
+        // of the largest segment, because of executor,
+        // so we grab the first one
         let code_vec = adapters
             .iter()
             .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
@@ -177,7 +183,6 @@ where
             index: seg_index,
             hashfn: hashfn.clone(),
         };
-        let num_traces = adapters.len();
         println!("prover time {:?}", time.elapsed());
         receipt.verify_with_context(num_traces, ctx)?;
         Ok(receipt)
