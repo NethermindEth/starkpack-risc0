@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use anyhow::Result;
 use risc0_circuit_rv32im::{
     layout::{OutBuffer, LAYOUT},
@@ -23,6 +22,8 @@ use risc0_zkp::{
     hal::{CircuitHal, Hal},
     layout::Buffer,
 };
+use std::mem;
+use std::time::Instant;
 
 use super::{HalPair, ProverServer};
 use crate::{
@@ -65,6 +66,7 @@ where
         let pack_segments = pack_session.resolve_packed_segments()?;
         let num_traces = pack_segments.len();
         let mut segments = Vec::new();
+
         for pack_segment in pack_segments {
             segments.push(
                 self.prove_segment(ctx, pack_segment.iter().map(|segment| segment).collect())?,
@@ -108,6 +110,7 @@ where
             segments[0].po2,
             segments[0].insn_cycles,
         );
+        let time = Instant::now();
         let (hal, circuit_hal) = (self.hal_pair.hal.as_ref(), &self.hal_pair.circuit_hal);
         let hashfn = &hal.get_hash_suite().name;
 
@@ -122,7 +125,6 @@ where
         prover.set_po2(adapters[0].po2() as usize); // All adapters already are set at the po2
                                                     // of the largest segment, because of executor,
                                                     // so we grab the first one
-
         let code_vec = adapters
             .iter()
             .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
@@ -169,15 +171,15 @@ where
 
         log::debug!("Globals: {:?}", OutBuffer(&out_slice_vec[0]).tree(&LAYOUT));
         let seal = prover.finalize(globals_vec_ref_ref, circuit_hal.as_ref());
-
+        println!("proof size = {:?}", seal.len() * mem::size_of::<u32>());
         let receipt = SegmentReceipt {
             seal,
             index: seg_index,
             hashfn: hashfn.clone(),
         };
         let num_traces = adapters.len();
+        println!("prover time {:?}", time.elapsed());
         receipt.verify_with_context(num_traces, ctx)?;
-
         Ok(receipt)
     }
 

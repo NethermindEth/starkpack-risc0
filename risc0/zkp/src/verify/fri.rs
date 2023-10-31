@@ -141,11 +141,12 @@ where
             let mut goal = inner(iop, pos)?;
             // Verify the per-round proofs
             for round in &mut rounds {
+                //println!("line 144 fri");
                 self.verify_query(round, iop, &mut pos, &mut goal)?;
+                //println!("144+ fri");
             }
             // Do final verification
             let x = gen.pow(pos);
-
             poly_buf.clear();
             poly_buf.extend((0..degree).map(|i| {
                 F::ExtElem::from_subelems(
@@ -157,6 +158,7 @@ where
                 return Err(VerificationError::InvalidProof);
             }
         }
+        println!("last line of fri");
         Ok(())
     }
 }

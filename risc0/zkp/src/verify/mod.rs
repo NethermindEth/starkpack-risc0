@@ -133,7 +133,6 @@ where
         let mut tot = vec![F::ExtElem::ZERO; num_traces * taps.combos_size() + 1];
         let combo_count = taps.combos_size();
         let x = F::ExtElem::from_subfield(&x);
-
         let mut tap_cache = self.tap_cache.borrow_mut();
         if let Some(ref c) = &mut *tap_cache {
             if c.taps != taps || c.mix != mix {
@@ -144,14 +143,17 @@ where
         //This may need to be modified
         if tap_cache.is_none() {
             let mut cur_mix = F::ExtElem::ONE;
-            let mut tap_mix_pows = Vec::with_capacity(taps.reg_count());
-            for _reg in taps.regs() {
-                tap_mix_pows.push(cur_mix);
-                cur_mix *= mix;
+            let mut tap_mix_pows = Vec::with_capacity(num_traces * taps.reg_count());
+            for _ in 0..num_traces {
+                for _reg in taps.regs() {
+                    tap_mix_pows.push(cur_mix);
+                    cur_mix *= mix;
+                }
             }
+            println!("verifier taps {:?}", tap_mix_pows.len());
             assert_eq!(
                 tap_mix_pows.len(),
-                taps.reg_count(),
+                num_traces * taps.reg_count(),
                 "Miscalculated capacity for tap_mix_pows"
             );
             let mut check_mix_pows = Vec::with_capacity(Self::CHECK_SIZE);
@@ -172,7 +174,11 @@ where
             for (reg, cur) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()) {
                 tot[index * combo_count + reg.combo_id()] +=
                 //This may not be the reg.size() this may be the taps.group_size(reg.group())
+<<<<<<< HEAD
                 *cur * rows[reg.group()][index * taps.group_size(reg.group())+ reg.offset()];
+=======
+                *cur * rows[reg.group()][index * taps.group_size(reg.group()) + reg.offset()];
+>>>>>>> 04bdfb1 (tap_cache updated)
             }
         }
         for (i, cur) in zip(0..Self::CHECK_SIZE, tap_cache.check_mix_pows.iter()) {
@@ -197,7 +203,6 @@ where
         let check_num = tot[num_traces * combo_count] - combo_u[num_traces * taps.tot_combo_backs];
         let check_div = x - z.pow(INV_RATE);
         ret += check_num * check_div.inv();
-
         ret
     }
 
@@ -222,7 +227,6 @@ where
 
         // Read any execution state
         self.execute(num_traces, &mut iop);
-
         // Get the size
         assert!(self.po2 as usize <= MAX_CYCLES_PO2);
         let size = 1 << self.po2;
@@ -241,7 +245,11 @@ where
         let code_merkle =
             MerkleTreeVerifier::new(&mut iop, hashfn, domain, num_traces * code_size, QUERIES);
         // log::debug!("codeRoot = {}", code_merkle.root());
+<<<<<<< HEAD
         // check_code(self.po2, code_merkle.root())?;
+=======
+        //check_code(self.po2, code_merkle.root())?;
+>>>>>>> 04bdfb1 (tap_cache updated)
         let _ = check_code;
 
         // Get merkle root for the data merkle tree.
@@ -262,7 +270,6 @@ where
             self.mix_vec
                 .push((0..C::MIX_SIZE).map(|_| iop.random_elem()).collect());
         }
-
         // Get merkle root for the accum merkle tree.
         // The accum merkle tree contains the accumulations for two permutation check
         // arguments: Each permutation check consists of a pre-permutation
@@ -304,7 +311,6 @@ where
         let coeff_u = iop.read_field_elem_slice(num_traces * num_taps + Self::CHECK_SIZE);
         let hash_u = self.suite.hashfn.hash_ext_elem_slice(coeff_u);
         iop.commit(&hash_u);
-
         // Now, convert U polynomials from coefficient form to evaluation form
         let mut cur_pos = 0;
         let mut eval_u = Vec::with_capacity(num_traces * num_taps);
@@ -393,12 +399,18 @@ where
         // need to compute.
         let mut combo_u: Vec<F::ExtElem> =
             vec![F::ExtElem::ZERO; num_traces * taps.tot_combo_backs + 1];
+        println!("combo verifer {:?}", combo_u.len());
         let mut cur_mix = F::ExtElem::ONE;
         cur_pos = 0;
         let mut tap_mix_pows = Vec::with_capacity(num_traces * taps.reg_count());
         for index in 0..num_traces {
             for reg in taps.regs() {
                 for i in 0..reg.size() {
+<<<<<<< HEAD
+=======
+                    // combo_u[index * (taps.combo_begin[reg.combo_id()] as usize) + i] +=
+                    //     cur_mix * coeff_u[cur_pos + i];
+>>>>>>> 04bdfb1 (tap_cache updated)
                     combo_u[index * taps.tot_combo_backs
                         + (taps.combo_begin[reg.combo_id()] as usize)
                         + i] += cur_mix * coeff_u[cur_pos + i];
@@ -408,11 +420,13 @@ where
                 cur_pos += reg.size();
             }
         }
+
         assert_eq!(
             tap_mix_pows.len(),
             num_traces * taps.reg_count(),
             "Miscalculated capacity for tap_mix_pows"
         );
+        println!("verifier cur_mix = {:?}", cur_mix);
         // log::debug!("cur_mix: {cur_mix:?}, cur_pos: {cur_pos}");
         // Handle check group
         let mut check_mix_pows = Vec::with_capacity(Self::CHECK_SIZE);
@@ -422,6 +436,7 @@ where
             check_mix_pows.push(cur_mix);
             cur_mix *= mix;
         }
+
         assert_eq!(
             check_mix_pows.len(),
             Self::CHECK_SIZE,
@@ -458,7 +473,11 @@ where
         for _ in 1..num_traces {
             self.out_vec
                 .push(Some(iop.read_field_elem_slice(C::OUTPUT_SIZE)));
+<<<<<<< HEAD
             self.po2 = *iop.read_u32s(1).first().unwrap();
+=======
+            let _ = *iop.read_u32s(1).first().unwrap();
+>>>>>>> 04bdfb1 (tap_cache updated)
         }
     }
 
