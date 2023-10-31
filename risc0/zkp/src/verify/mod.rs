@@ -172,7 +172,7 @@ where
             for (reg, cur) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()) {
                 tot[index * combo_count + reg.combo_id()] +=
                 //This may not be the reg.size() this may be the taps.group_size(reg.group())
-                *cur * rows[reg.group()][index * reg.size() + reg.offset()];
+                *cur * rows[reg.group()][index * taps.group_size(reg.group())+ reg.offset()];
             }
         }
         for (i, cur) in zip(0..Self::CHECK_SIZE, tap_cache.check_mix_pows.iter()) {
@@ -458,6 +458,7 @@ where
         for _ in 1..num_traces {
             self.out_vec
                 .push(Some(iop.read_field_elem_slice(C::OUTPUT_SIZE)));
+            self.po2 = *iop.read_u32s(1).first().unwrap();
         }
     }
 
