@@ -83,6 +83,7 @@ where
             .collect();
         // Check the existing goal
         if data_ext[quot] != *goal {
+            println!("data quotient != goal");
             return Err(VerificationError::InvalidProof);
         }
         // Compute the new goal + pos
@@ -114,7 +115,9 @@ where
             (log2_ceil((degree + FRI_FOLD - 1) / FRI_FOLD) + FRI_FOLD_PO2 - 1) / FRI_FOLD_PO2;
         let mut rounds = Vec::with_capacity(rounds_capacity);
         while degree > FRI_MIN_DEGREE {
-            rounds.push(VerifyRoundInfo::new(iop, hashfn, domain));
+            let verifier_info = VerifyRoundInfo::new(iop, hashfn, domain);
+            println!("verifier info mix:{:?}", verifier_info.mix);
+            rounds.push(verifier_info);
             domain /= FRI_FOLD;
             degree /= FRI_FOLD;
         }
@@ -155,6 +158,7 @@ where
             }));
             let fx = self.poly_eval(poly_buf.as_slice(), F::ExtElem::from_subfield(&x));
             if fx != goal {
+                println!("fx != goal");
                 return Err(VerificationError::InvalidProof);
             }
         }

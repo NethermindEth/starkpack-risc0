@@ -257,6 +257,7 @@ impl InnerReceipt {
         if crate::is_dev_mode() {
             return Ok(());
         }
+        println!("fake verify");
         Err(VerificationError::InvalidProof)
     }
 

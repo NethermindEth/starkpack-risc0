@@ -106,7 +106,6 @@ pub trait Prover {
     ) -> Result<Receipt> {
         let program = Program::load_elf(elf, GUEST_MAX_MEM as u32)?;
         let image = MemoryImage::new(&program, PAGE_SIZE as u32)?;
-        // let envs = vec![envs.first().map(|env| env.to_owned()).unwrap()];
         self.prove(envs, ctx, opts, image)
     }
 }

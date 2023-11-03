@@ -151,6 +151,10 @@ where
                 }
             }
             println!("verifier taps {:?}", tap_mix_pows.len());
+            println!(
+                "cur mix b before check in fri_evals: {:?}",
+                cur_mix * mix.inv()
+            );
             assert_eq!(
                 tap_mix_pows.len(),
                 num_traces * taps.reg_count(),
@@ -161,6 +165,8 @@ where
                 check_mix_pows.push(cur_mix);
                 cur_mix *= mix;
             }
+            println!("cur mix v after check in fri_evals: {:?}", cur_mix);
+            println!("verifier check taps {}", check_mix_pows.len());
 
             tap_cache.replace(TapCache {
                 taps,
@@ -170,13 +176,24 @@ where
             });
         }
         let tap_cache = tap_cache.as_ref().unwrap();
+        let taps_size = tap_cache.tap_mix_pows.len() / num_traces;
         for index in 0..num_traces {
-            for (reg, cur) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()) {
+            let _this_tap_mix = &tap_cache.tap_mix_pows[index * taps_size..(index + 1) * taps_size];
+            // for (i, (reg, cur)) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()).enumerate() {
+            for (i, (reg, cur)) in zip(taps.regs(), _this_tap_mix).enumerate() {
                 tot[index * combo_count + reg.combo_id()] +=
                 //This may not be the reg.size() this may be the taps.group_size(reg.group())
                 *cur * rows[reg.group()][index * taps.group_size(reg.group()) + reg.offset()];
+                if i == 0 {
+                    println!("cur mix(0) times rows: {:?}", cur);
+                }
             }
+            println!("last cur mix in taps: {:?}", _this_tap_mix.last().unwrap());
         }
+        println!(
+            "first cur mix in check: {:?}",
+            tap_cache.check_mix_pows.first().unwrap()
+        );
         for (i, cur) in zip(0..Self::CHECK_SIZE, tap_cache.check_mix_pows.iter()) {
             tot[num_traces * combo_count] += *cur * check_row[i];
         }
@@ -300,6 +317,7 @@ where
 
         // Read the U coeffs (the interpolations of the taps) + commit their hash.
         let num_taps: usize = taps.tap_size();
+        println!("Number of taps: {}", num_taps);
         let coeff_u = iop.read_field_elem_slice(num_traces * num_taps + Self::CHECK_SIZE);
         let hash_u = self.suite.hashfn.hash_ext_elem_slice(coeff_u);
         iop.commit(&hash_u);
@@ -316,6 +334,8 @@ where
                 cur_pos += reg.size();
             }
         }
+        println!("coeff_u len {}", coeff_u.len());
+        println!("eval_u len {}", eval_u.len());
 
         assert_eq!(
             eval_u.len(),
@@ -378,6 +398,7 @@ where
             final_result += result_vec[index];
         }
         if check != final_result {
+            println!("check != final");
             return Err(VerificationError::InvalidProof);
         }
         // Set the mix mix value, pseudorandom value used for FRI batching
@@ -391,7 +412,7 @@ where
         // need to compute.
         let mut combo_u: Vec<F::ExtElem> =
             vec![F::ExtElem::ZERO; num_traces * taps.tot_combo_backs + 1];
-        println!("combo verifer {:?}", combo_u.len());
+        // println!("combo verifer {:?}", combo_u.len());
         let mut cur_mix = F::ExtElem::ONE;
         cur_pos = 0;
         let mut tap_mix_pows = Vec::with_capacity(num_traces * taps.reg_count());
@@ -408,6 +429,7 @@ where
                 cur_mix *= mix;
                 cur_pos += reg.size();
             }
+            println!("Cur pos {}", cur_pos);
         }
 
         assert_eq!(
@@ -417,7 +439,7 @@ where
         );
         // log::debug!("cur_mix: {cur_mix:?}, cur_pos: {cur_pos}");
         // Handle check group
-        println!("v mix {:?}", cur_mix);
+        println!("v mix before check size{:?}", cur_mix);
         let mut check_mix_pows = Vec::with_capacity(Self::CHECK_SIZE);
         for _ in 0..Self::CHECK_SIZE {
             combo_u[num_traces * taps.tot_combo_backs] += cur_mix * coeff_u[cur_pos];
@@ -426,6 +448,7 @@ where
             cur_mix *= mix;
         }
 
+        println!("Combo u from V:\nSize: {}\n{:?}", combo_u.len(), combo_u);
         assert_eq!(
             check_mix_pows.len(),
             Self::CHECK_SIZE,
@@ -444,6 +467,7 @@ where
                 data_merkle.verify(iop, hashfn, idx)?,
             ];
             let check_row = check_merkle.verify(iop, hashfn, idx)?;
+            println!("Merkle trees verified");
             let ret = self.fri_eval_taps(
                 num_traces, taps, mix, &combo_u, check_row, back_one, x, z, rows,
             );

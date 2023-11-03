@@ -181,6 +181,7 @@ impl<'a> MerkleTreeVerifier<'a> {
         if *present_hash == *cur {
             Ok(out)
         } else {
+            println!("bad merkle tree");
             Err(VerificationError::InvalidProof)
         }
     }
