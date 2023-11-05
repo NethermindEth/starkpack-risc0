@@ -62,10 +62,6 @@ impl PackSession {
             let mut ith_pack_segments = Vec::new();
             for segment in pack_segment {
                 let resolved_seg = segment.resolve()?;
-                // if resolved_packed_segments.len() <= i {
-                //     resolved_packed_segments.push(vec![]);
-                // }
-                // resolved_packed_segments[i].push(resolved_seg);
                 ith_pack_segments.push(resolved_seg);
             }
             resolved_packed_segments.push(ith_pack_segments);

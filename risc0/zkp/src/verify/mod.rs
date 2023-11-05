@@ -210,7 +210,6 @@ where
         &mut self,
         seal: &'a [u32],
         check_code: CheckCodeFn,
-        num_traces: usize,
     ) -> Result<(), VerificationError>
     where
         CheckCodeFn: Fn(u32, &Digest) -> Result<(), VerificationError>,
@@ -218,6 +217,8 @@ where
         if seal.is_empty() {
             return Err(VerificationError::ReceiptFormatError);
         }
+        let (&num_traces, seal) = seal.split_last().unwrap();
+        let num_traces = num_traces as usize;
 
         let taps = self.circuit.get_taps();
         let hashfn = self.suite.hashfn.as_ref();
@@ -382,7 +383,6 @@ where
             final_result += result_vec[index];
         }
         if check != final_result {
-            println!("check != final");
             return Err(VerificationError::InvalidProof);
         }
         // Set the mix mix value, pseudorandom value used for FRI batching
@@ -454,7 +454,6 @@ where
             Ok(ret)
         })?;
         iop.verify_complete();
-        println!("Verify completed");
         Ok(())
     }
 
@@ -492,12 +491,11 @@ pub fn verify<F, C, CheckCode>(
     suite: &HashSuite<F>,
     seal: &[u32],
     check_code: CheckCode,
-    num_traces: usize,
 ) -> Result<(), VerificationError>
 where
     F: Field,
     C: CircuitCoreDef<F>,
     CheckCode: Fn(u32, &Digest) -> Result<(), VerificationError>,
 {
-    Verifier::<F, C>::new(circuit, suite).verify(seal, check_code, num_traces)
+    Verifier::<F, C>::new(circuit, suite).verify(seal, check_code)
 }

@@ -63,10 +63,10 @@ where
         /* Here we start changing the code to introduce StarkPack */
         log::info!("prove_session: {}", self.name);
         let pack_segments = pack_session.resolve_packed_segments()?;
-        let num_traces = pack_segments.len();
+        let _num_traces = pack_segments.len();
         let mut segments = Vec::new();
 
-        for pack_segment in pack_segments {
+        for pack_segment in pack_segments.iter() {
             segments.push(
                 self.prove_segment(ctx, pack_segment.iter().map(|segment| segment).collect())?,
             );
@@ -88,12 +88,11 @@ where
         let inner = InnerReceipt::Flat(SegmentReceipts(segments));
         //we will need to modify the journal as we have pub data of multiple traces
         let receipt = Receipt::new(inner, pack_session.pack_journals[0].clone());
-
         let image_id = pack_session.pack_segments[0][0]
             .resolve()?
             .pre_image
             .compute_id();
-        receipt.verify_with_context(num_traces, ctx, image_id)?;
+        receipt.verify_with_context(ctx, image_id)?;
         Ok(receipt)
     }
 
@@ -121,15 +120,9 @@ where
         let num_traces = adapters.len();
         adapters[0].execute_first(prover.iop());
         prover.set_po2(adapters[0].po2() as usize);
-        // for adapter in adapters.skip(1).iter_mut() {
-        //     adapter.execute(prover.iop());
-        // }
         for i in 1..num_traces {
             adapters[i].execute(prover.iop());
         }
-        // All adapters already are set at the po2
-        // of the largest segment, because of executor,
-        // so we grab the first one
         let code_vec = adapters
             .iter()
             .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
@@ -175,14 +168,14 @@ where
             .collect();
 
         log::debug!("Globals: {:?}", OutBuffer(&out_slice_vec[0]).tree(&LAYOUT));
-        let seal = prover.finalize(globals_vec_ref_ref, circuit_hal.as_ref());
+        let mut seal = prover.finalize(globals_vec_ref_ref, circuit_hal.as_ref());
+        seal.push(num_traces as u32);
         let receipt = SegmentReceipt {
             seal,
             index: seg_index,
             hashfn: hashfn.clone(),
         };
-        receipt.verify_with_context(num_traces, ctx)?;
-        println!("Segment proved");
+        receipt.verify_with_context(ctx)?;
         Ok(receipt)
     }
 

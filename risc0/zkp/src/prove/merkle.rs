@@ -235,9 +235,7 @@ mod tests {
                         false,
                         "Merkle tree wrongly passed verify when tested on the wrong row"
                     ),
-                    Err(VerificationError::InvalidProof) => {
-                        println!("possibly bad merkle tree");
-                    }
+                    Err(VerificationError::InvalidProof) => {}
                     Err(_) => assert!(
                         false,
                         "Merkle tree failed validation for an unexpected reason"

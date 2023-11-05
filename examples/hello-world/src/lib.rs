@@ -41,7 +41,6 @@ pub fn multiply(pairs: Vec<(u64, u64)>) -> (Receipt, u64) {
     let prover = default_prover();
     // Produce a receipt by proving the specified ELF binary.
     let receipt = prover.prove_elf(envs, MULTIPLY_ELF).unwrap();
-    println!("avter receipt");
     // Extract journal of receipt (i.e. output c, where c = a * b)
     let c: u64 = from_slice(&receipt.journal).expect(
         "Journal output should deserialize into the same types (& order) that it was written",

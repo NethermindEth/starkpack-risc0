@@ -83,7 +83,6 @@ where
             .collect();
         // Check the existing goal
         if data_ext[quot] != *goal {
-            println!("data quotient != goal");
             return Err(VerificationError::InvalidProof);
         }
         // Compute the new goal + pos
@@ -157,7 +156,6 @@ where
             }));
             let fx = self.poly_eval(poly_buf.as_slice(), F::ExtElem::from_subfield(&x));
             if fx != goal {
-                println!("fx != goal");
                 return Err(VerificationError::InvalidProof);
             }
         }

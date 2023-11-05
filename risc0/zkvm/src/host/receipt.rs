@@ -182,7 +182,7 @@ impl SegmentReceipts {
             .ok_or(VerificationError::ReceiptFormatError)?;
         let mut prev_image_id = image_id;
         for receipt in receipts {
-            receipt.verify_with_context(1, ctx)?;
+            receipt.verify_with_context(ctx)?;
             let metadata: ReceiptMetadata = receipt.get_metadata()?;
             log::debug!("metadata: {metadata:#?}");
             if prev_image_id != metadata.pre.digest() {
@@ -193,7 +193,7 @@ impl SegmentReceipts {
             }
             prev_image_id = metadata.post.digest();
         }
-        final_receipt.verify_with_context(1, ctx)?;
+        final_receipt.verify_with_context(ctx)?;
         let metadata = final_receipt.get_metadata()?;
         log::debug!("final: {metadata:#?}");
         if prev_image_id != metadata.pre.digest() {
@@ -230,24 +230,22 @@ impl InnerReceipt {
     /// Verify the integrity of this receipt.
     pub fn verify(
         &self,
-        num_traces: usize,
         image_id: impl Into<Digest>,
         journal: &[u8],
     ) -> Result<(), VerificationError> {
-        self.verify_with_context(num_traces, &VerifierContext::default(), image_id, journal)
+        self.verify_with_context(&VerifierContext::default(), image_id, journal)
     }
 
     /// Verify the integrity of this receipt.
     pub fn verify_with_context(
         &self,
-        num_traces: usize,
         ctx: &VerifierContext,
         image_id: impl Into<Digest>,
         journal: &[u8],
     ) -> Result<(), VerificationError> {
         match self {
             InnerReceipt::Flat(x) => x.verify_with_context(ctx, image_id.into(), journal),
-            InnerReceipt::Succinct(x) => x.verify_with_context(num_traces, ctx),
+            InnerReceipt::Succinct(x) => x.verify_with_context(ctx),
             InnerReceipt::Fake => Self::verify_fake(),
         }
     }
@@ -257,7 +255,6 @@ impl InnerReceipt {
         if crate::is_dev_mode() {
             return Ok(());
         }
-        println!("fake verify");
         Err(VerificationError::InvalidProof)
     }
 
@@ -321,12 +318,8 @@ impl Receipt {
     /// Segment has a valid receipt, and validates that these [SegmentReceipt]s
     /// stitch together correctly, and that the initial memory image matches the
     /// given `image_id` parameter.
-    pub fn verify(
-        &self,
-        num_traces: usize,
-        image_id: impl Into<Digest>,
-    ) -> Result<(), VerificationError> {
-        self.verify_with_context(num_traces, &VerifierContext::default(), image_id)
+    pub fn verify(&self, image_id: impl Into<Digest>) -> Result<(), VerificationError> {
+        self.verify_with_context(&VerifierContext::default(), image_id)
     }
 
     /// Verify the integrity of this receipt.
@@ -337,12 +330,10 @@ impl Receipt {
     /// given `image_id` parameter.
     pub fn verify_with_context(
         &self,
-        num_traces: usize,
         ctx: &VerifierContext,
         image_id: impl Into<Digest>,
     ) -> Result<(), VerificationError> {
-        self.inner
-            .verify_with_context(num_traces, ctx, image_id, &self.journal)
+        self.inner.verify_with_context(ctx, image_id, &self.journal)
     }
 
     /// Extract the [ReceiptMetadata] from this receipt for an excution session.
@@ -362,11 +353,7 @@ impl Receipt {
 
 impl SegmentReceipt {
     /// Verify the integrity of this receipt.
-    pub fn verify_with_context(
-        &self,
-        num_traces: usize,
-        ctx: &VerifierContext,
-    ) -> Result<(), VerificationError> {
+    pub fn verify_with_context(&self, ctx: &VerifierContext) -> Result<(), VerificationError> {
         use hex::FromHex;
         let check_code = |_, control_id: &Digest| -> Result<(), VerificationError> {
             POSEIDON_CONTROL_ID
@@ -381,7 +368,7 @@ impl SegmentReceipt {
             .suites
             .get(&self.hashfn)
             .ok_or(VerificationError::InvalidHashSuite)?;
-        risc0_zkp::verify::verify(&super::CIRCUIT, suite, &self.seal, check_code, num_traces)
+        risc0_zkp::verify::verify(&super::CIRCUIT, suite, &self.seal, check_code)
     }
 
     /// Returns the [ReceiptMetadata] for this receipt.
