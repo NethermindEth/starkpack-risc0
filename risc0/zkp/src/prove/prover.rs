@@ -259,8 +259,6 @@ impl<'a, H: Hal> Prover<'a, H> {
                 }
             });
         }
-        println!("coeff_u len P: {}", coeff_u.len());
-        println!("eval_u len P: {}", eval_u.len());
 
         // Add in the coeffs of the check polynomials.
         let z_pow = z.pow(ext_size);
@@ -294,7 +292,6 @@ impl<'a, H: Hal> Prover<'a, H> {
         // Begin by making a zeroed output buffer
         let combo_count = self.taps.combos_size();
         let combos = vec![H::ExtElem::ZERO; self.cycles * (num_traces * combo_count + 1)];
-        println!("prover combo {:?}", num_traces * combo_count + 1);
         let combos = self.hal.copy_from_extelem("combos", combos.as_slice());
         let mut num_mix_powers = 0;
         tracing::info_span!("mix_poly_coeffs").in_scope(|| {
@@ -336,8 +333,6 @@ impl<'a, H: Hal> Prover<'a, H> {
                         }
                     })
             });
-            println!("Num mix powers before check: {}", num_mix_powers);
-            println!("p mix {:?}", cur_mix);
             let which = vec![(combo_count * num_traces) as u32; H::CHECK_SIZE];
             let which_buf = self.hal.copy_from_u32("which", which.as_slice());
             self.hal.mix_poly_coeffs(
@@ -349,17 +344,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                 H::CHECK_SIZE,
                 self.cycles,
             );
-            println!(
-                "cur mix p after check in prover: {:?}",
-                cur_mix * mix.pow(H::CHECK_SIZE)
-            );
         });
-
-        // combos.view(|combos| {
-        //     println!("Combo u from P:");
-        //     println!("Size: {}", combos.len());
-        //     println!("{:?}", combos);
-        // });
 
         // Load the near final coefficients back to the CPU
         tracing::info_span!("load_combos").in_scope(|| {

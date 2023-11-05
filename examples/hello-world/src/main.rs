@@ -17,12 +17,13 @@ use hello_world_methods::MULTIPLY_ID;
 
 fn main() {
     // Pick two numbers
-    let num_traces = 1;
+    let num_traces = 2;
     let pairs_to_multiply: Vec<(u64, u64)> = vec![(11, 17); num_traces]; //, (11, 17), (11, 17)];
     let (receipt, _) = multiply(pairs_to_multiply);
     // Here is where one would send 'receipt' over the network...
 
     // Verify receipt, panic if it's wrong
+    println!("session verified");
     receipt.verify(num_traces, MULTIPLY_ID).expect(
         "Code you have proven should successfully verify; did you specify the correct image ID?",
     );

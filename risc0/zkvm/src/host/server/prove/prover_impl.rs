@@ -22,7 +22,6 @@ use risc0_zkp::{
     hal::{CircuitHal, Hal},
     layout::Buffer,
 };
-use std::mem;
 use std::time::Instant;
 
 use super::{HalPair, ProverServer};
@@ -110,7 +109,7 @@ where
             segments[0].po2,
             segments[0].insn_cycles,
         );
-        let time = Instant::now();
+        let _time = Instant::now();
         let (hal, circuit_hal) = (self.hal_pair.hal.as_ref(), &self.hal_pair.circuit_hal);
         let hashfn = &hal.get_hash_suite().name;
 
@@ -177,14 +176,13 @@ where
 
         log::debug!("Globals: {:?}", OutBuffer(&out_slice_vec[0]).tree(&LAYOUT));
         let seal = prover.finalize(globals_vec_ref_ref, circuit_hal.as_ref());
-        println!("proof size = {:?}", seal.len() * mem::size_of::<u32>());
         let receipt = SegmentReceipt {
             seal,
             index: seg_index,
             hashfn: hashfn.clone(),
         };
-        println!("prover time {:?}", time.elapsed());
         receipt.verify_with_context(num_traces, ctx)?;
+        println!("Segment proved");
         Ok(receipt)
     }
 

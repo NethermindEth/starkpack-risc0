@@ -62,7 +62,6 @@ impl<H: Hal> _ProveRoundInfo<H> {
         merkle.commit(iop);
         // Retrieve from the IOP verifier a random value to mix the polynomial slices.
         let fold_mix = iop.random_ext_elem();
-        println!("fold mix:\n{:?}", fold_mix);
         // Create a buffer to hold the mixture of slices.
         let out_coeffs = hal.alloc_elem("out_coeffs", size / FRI_FOLD * ext_size);
         // Compute the folded polynomial

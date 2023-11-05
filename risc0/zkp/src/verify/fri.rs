@@ -116,7 +116,6 @@ where
         let mut rounds = Vec::with_capacity(rounds_capacity);
         while degree > FRI_MIN_DEGREE {
             let verifier_info = VerifyRoundInfo::new(iop, hashfn, domain);
-            println!("verifier info mix:{:?}", verifier_info.mix);
             rounds.push(verifier_info);
             domain /= FRI_FOLD;
             degree /= FRI_FOLD;
@@ -162,7 +161,6 @@ where
                 return Err(VerificationError::InvalidProof);
             }
         }
-        println!("last line of fri");
         Ok(())
     }
 }
