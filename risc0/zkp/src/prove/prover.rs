@@ -122,6 +122,7 @@ impl<'a, H: Hal> Prover<'a, H> {
         let poly_mix_vec: Vec<<H as Hal>::ExtElem> = (0..num_traces)
             .map(|_| self.iop.random_ext_elem())
             .collect();
+        let final_mix = self.iop.random_ext_elem();
         let domain = self.cycles * INV_RATE;
         let ext_size = H::ExtElem::EXT_SIZE;
 
@@ -170,6 +171,11 @@ impl<'a, H: Hal> Prover<'a, H> {
             let prev = self.hal.alloc_elem("prev", final_poly.size());
             self.hal.eltwise_copy_elem(&prev, &final_poly);
             // Currently we are not adding the challenge from the verifier
+            let mut cur_poly = Vec::new();
+            check_poly.view(|cp| cur_poly = cp.to_vec());
+            for (i, &coeff) in cur_poly.iter().enumerate() {
+                coeff = coeff * final_mix.pow(i);
+            }
             self.hal.eltwise_add_elem(&final_poly, &prev, &check_poly);
         }
 
@@ -259,7 +265,6 @@ impl<'a, H: Hal> Prover<'a, H> {
                 }
             });
         }
-
         // Add in the coeffs of the check polynomials.
         let z_pow = z.pow(ext_size);
         let which = Vec::from_iter(0u32..H::CHECK_SIZE as u32);
@@ -345,7 +350,6 @@ impl<'a, H: Hal> Prover<'a, H> {
                 self.cycles,
             );
         });
-
         // Load the near final coefficients back to the CPU
         tracing::info_span!("load_combos").in_scope(|| {
             combos.view_mut(|combos_view| {

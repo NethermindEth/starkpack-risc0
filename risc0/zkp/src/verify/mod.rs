@@ -140,7 +140,6 @@ where
                 tap_cache.take();
             }
         }
-        //This may need to be modified
         if tap_cache.is_none() {
             let mut cur_mix = F::ExtElem::ONE;
             let mut tap_mix_pows = Vec::with_capacity(num_traces * taps.reg_count());
@@ -160,7 +159,6 @@ where
                 check_mix_pows.push(cur_mix);
                 cur_mix *= mix;
             }
-
             tap_cache.replace(TapCache {
                 taps,
                 mix,
@@ -173,11 +171,10 @@ where
         for index in 0..num_traces {
             let _this_tap_mix = &tap_cache.tap_mix_pows[index * taps_size..(index + 1) * taps_size];
             // for (i, (reg, cur)) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()).enumerate() {
-            for (i, (reg, cur)) in zip(taps.regs(), _this_tap_mix).enumerate() {
+            for (reg, cur) in zip(taps.regs(), _this_tap_mix) {
                 tot[index * combo_count + reg.combo_id()] +=
                 //This may not be the reg.size() this may be the taps.group_size(reg.group())
                 *cur * rows[reg.group()][index * taps.group_size(reg.group()) + reg.offset()];
-                if i == 0 {}
             }
         }
         for (i, cur) in zip(0..Self::CHECK_SIZE, tap_cache.check_mix_pows.iter()) {
@@ -286,10 +283,7 @@ where
         // See DEEP-ALI protocol from DEEP-FRI paper for details on constraint mixing.
         let poly_mix_vec: Vec<<F as Field>::ExtElem> =
             (0..num_traces).map(|_| iop.random_ext_elem()).collect();
-        //let mut poly_mix_vec = Vec::new();
-        //for _ in 0..num_traces {
-        //    poly_mix_vec.push(iop.random_ext_elem());
-        //}
+        let final_mix = iop.random_ext_elem();
 
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("check_merkle");
@@ -333,7 +327,7 @@ where
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("> compute_polynomial");
         // let result = self.compute_polynomial(&eval_u, poly_mix);
-        let mut result_vec = Vec::new();
+        let mut result_vec: Vec<<F as Field>::ExtElem> = Vec::new();
         for index in 0..num_traces {
             result_vec.push(
                 self.circuit
@@ -380,7 +374,7 @@ where
         // log::debug!("Check = {check:?}");
         let mut final_result = F::ExtElem::default();
         for index in 0..num_traces {
-            final_result += result_vec[index];
+            final_result += result_vec[index] * final_mix.pow(index);
         }
         if check != final_result {
             return Err(VerificationError::InvalidProof);

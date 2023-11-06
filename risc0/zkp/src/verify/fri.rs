@@ -130,7 +130,9 @@ where
         );
         // Grab the final coeffs + commit
         let final_coeffs = iop.read_field_elem_slice(F::ExtElem::EXT_SIZE * degree);
+        //println!("final_coeffs {:?}", final_coeffs);
         let final_digest = hashfn.hash_elem_slice(final_coeffs);
+        //println!("final_digest {:?}", final_digest);
         iop.commit(&final_digest);
         // Get the generator for the final polynomial evaluations
         let gen = <F::Elem as RootsOfUnity>::ROU_FWD[log2_ceil(domain)];
@@ -142,9 +144,7 @@ where
             let mut goal = inner(iop, pos)?;
             // Verify the per-round proofs
             for round in &mut rounds {
-                //println!("line 144 fri");
                 self.verify_query(round, iop, &mut pos, &mut goal)?;
-                //println!("144+ fri");
             }
             // Do final verification
             let x = gen.pow(pos);
