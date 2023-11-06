@@ -122,7 +122,8 @@ impl<'a, H: Hal> Prover<'a, H> {
         let poly_mix_vec: Vec<<H as Hal>::ExtElem> = (0..num_traces)
             .map(|_| self.iop.random_ext_elem())
             .collect();
-        let final_mix = self.iop.random_ext_elem();
+        let final_mix = self.iop.random_elem(); //H::ExtElem::ONE;
+        println!("prover mix {:?}", final_mix);
         let domain = self.cycles * INV_RATE;
         let ext_size = H::ExtElem::EXT_SIZE;
 
@@ -133,7 +134,7 @@ impl<'a, H: Hal> Prover<'a, H> {
 
         //let check_poly: Vec<<H as Hal>::Buffer<<H as Hal>::Elem>> = self.hal.alloc_elem("check_poly", ext_size * domain);
         let check_poly_vec: Vec<<H as Hal>::Buffer<<H as Hal>::Elem>> = (0..num_traces)
-            .map(|_i| self.hal.alloc_elem("check_poly", ext_size * domain))
+            .map(|_| self.hal.alloc_elem("check_poly", ext_size * domain))
             .collect();
         for i in 0..num_traces {
             let groups: Vec<&_> = self
@@ -167,16 +168,19 @@ impl<'a, H: Hal> Prover<'a, H> {
         let final_poly = self
             .hal
             .alloc_elem("final_poly", check_poly_vec.first().unwrap().size());
-        for check_poly in check_poly_vec {
+        for (i, check_poly) in check_poly_vec.iter().enumerate() {
             let prev = self.hal.alloc_elem("prev", final_poly.size());
             self.hal.eltwise_copy_elem(&prev, &final_poly);
-            // Currently we are not adding the challenge from the verifier
+            // Make the cur_poly which is a vector and not a buffer
             let mut cur_poly = Vec::new();
             check_poly.view(|cp| cur_poly = cp.to_vec());
-            for (i, &coeff) in cur_poly.iter().enumerate() {
-                coeff = coeff * final_mix.pow(i);
+            // Multiply each coeff with the coresponding power of the final_mix
+            for &(mut coeff) in cur_poly.iter() {
+                coeff *= final_mix.pow(i);
             }
-            self.hal.eltwise_add_elem(&final_poly, &prev, &check_poly);
+            // Switch back to a buffer
+            let buf_poly = self.hal.copy_from_elem("cur_poly", &cur_poly.as_slice());
+            self.hal.eltwise_add_elem(&final_poly, &prev, &buf_poly);
         }
 
         self.hal.batch_interpolate_ntt(&final_poly, ext_size);

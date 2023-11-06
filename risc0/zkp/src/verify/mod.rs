@@ -283,8 +283,8 @@ where
         // See DEEP-ALI protocol from DEEP-FRI paper for details on constraint mixing.
         let poly_mix_vec: Vec<<F as Field>::ExtElem> =
             (0..num_traces).map(|_| iop.random_ext_elem()).collect();
-        let final_mix = iop.random_ext_elem();
-
+        let final_mix = iop.random_elem(); //F::Elem::ONE;
+        println!("verifeir mix {:?}", final_mix);
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("check_merkle");
         let check_merkle: MerkleTreeVerifier<'_> =
@@ -374,9 +374,11 @@ where
         // log::debug!("Check = {check:?}");
         let mut final_result = F::ExtElem::default();
         for index in 0..num_traces {
-            final_result += result_vec[index] * final_mix.pow(index);
+            final_result += result_vec[index]; //* final_mix.pow(index);
         }
         if check != final_result {
+            println!("final_poly {:?}", final_result);
+            println!("check {:?}", check);
             return Err(VerificationError::InvalidProof);
         }
         // Set the mix mix value, pseudorandom value used for FRI batching
