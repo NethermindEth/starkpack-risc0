@@ -8,7 +8,14 @@ hello-world-methods = { path = "methods" }
 risc0-zkvm = { path = "../../risc0/zkvm" }
 serde = "1.0"
 
+[dev-dependencies]
+criterion = "0.5"
+
 [features]
 cuda = ["risc0-zkvm/cuda"]
 default = []
 metal = ["risc0-zkvm/metal"]
+
+[[bench]]
+name = "hello_bench"
+harness = false

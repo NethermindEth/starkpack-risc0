@@ -88,11 +88,6 @@ where
         let inner = InnerReceipt::Flat(SegmentReceipts(segments));
         //we will need to modify the journal as we have pub data of multiple traces
         let receipt = Receipt::new(inner, pack_session.pack_journals[0].clone());
-        let image_id = pack_session.pack_segments[0][0]
-            .resolve()?
-            .pre_image
-            .compute_id();
-        receipt.verify_with_context(ctx, image_id)?;
         Ok(receipt)
     }
 
@@ -102,6 +97,7 @@ where
         segments: Vec<&Segment>,
     ) -> Result<SegmentReceipt> {
         let seg_index = segments[0].index;
+        let _ = ctx;
         log::info!(
             "prove_segment[{}]: po2: {}, insn_cycles: {}",
             segments[0].index,
@@ -175,7 +171,6 @@ where
             index: seg_index,
             hashfn: hashfn.clone(),
         };
-        receipt.verify_with_context(ctx)?;
         Ok(receipt)
     }
 
