@@ -53,13 +53,7 @@ impl ProverServer for DevModeProver {
             )
         }
 
-        // let session = pack_session.first().unwrap();
-        let first_session_journal = &pack_session.pack_journals[0];
-        Ok(Receipt::new(
-            InnerReceipt::Fake,
-            first_session_journal.to_vec(),
-        ))
-        // Ok(Receipt::new(InnerReceipt::Fake, session.journal.clone()))
+        Ok(Receipt::new(InnerReceipt::Fake, pack_session.pack_journals))
     }
 
     fn prove_segment(

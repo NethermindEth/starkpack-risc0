@@ -146,7 +146,7 @@ pub struct Receipt {
     ///
     /// This data is cryptographically authenticated in
     /// [Receipt::verify].
-    pub journal: Vec<u8>,
+    pub journals: Vec<Vec<u8>>,
 }
 
 /// An inner receipt can take the form of a [SegmentReceipts] collection or a
@@ -173,7 +173,7 @@ impl SegmentReceipts {
         &self,
         ctx: &VerifierContext,
         image_id: Digest,
-        journal: &[u8],
+        journals: &Vec<Vec<u8>>,
     ) -> Result<(), VerificationError> {
         let (final_receipt, receipts) = self
             .0
@@ -204,22 +204,33 @@ impl SegmentReceipts {
             return Err(VerificationError::UnexpectedExitCode);
         }
 
-        let digest = Sha256::digest(journal);
-        let digest_words: &[u32] = bytemuck::cast_slice(digest.as_slice());
-        let output_words = metadata.output.as_words();
-        let is_journal_valid = || {
-            (journal.is_empty() && output_words.iter().all(|x| *x == 0))
-                || digest_words == output_words
-        };
-        if !is_journal_valid() {
-            log::debug!(
-                "journal: \"{}\", digest: 0x{}, output: 0x{}, {:?}",
-                hex::encode(journal),
-                hex::encode(bytemuck::cast_slice(digest_words)),
-                hex::encode(bytemuck::cast_slice(output_words)),
-                journal
+        for journal in journals {
+            let digest = Sha256::digest(journal);
+            let digest_words: &[u32] = bytemuck::cast_slice(digest.as_slice());
+            let output_words = metadata.output.as_words();
+            println!("journal is empty: {}", journal.is_empty());
+            println!(
+                "output words are zero: {}",
+                output_words.iter().all(|x| *x == 0)
             );
-            return Err(VerificationError::JournalDigestMismatch);
+            println!(
+                "digest words equal output: {}",
+                digest_words == output_words
+            );
+            let is_journal_valid = || {
+                (journal.is_empty() && output_words.iter().all(|x| *x == 0))
+                    || digest_words == output_words
+            };
+            if !is_journal_valid() {
+                log::debug!(
+                    "journal: \"{}\", digest: 0x{}, output: 0x{}, {:?}",
+                    hex::encode(journal),
+                    hex::encode(bytemuck::cast_slice(digest_words)),
+                    hex::encode(bytemuck::cast_slice(output_words)),
+                    journal
+                );
+                return Err(VerificationError::JournalDigestMismatch);
+            }
         }
 
         Ok(())
@@ -231,9 +242,9 @@ impl InnerReceipt {
     pub fn verify(
         &self,
         image_id: impl Into<Digest>,
-        journal: &[u8],
+        journals: &Vec<Vec<u8>>,
     ) -> Result<(), VerificationError> {
-        self.verify_with_context(&VerifierContext::default(), image_id, journal)
+        self.verify_with_context(&VerifierContext::default(), image_id, journals)
     }
 
     /// Verify the integrity of this receipt.
@@ -241,10 +252,10 @@ impl InnerReceipt {
         &self,
         ctx: &VerifierContext,
         image_id: impl Into<Digest>,
-        journal: &[u8],
+        journals: &Vec<Vec<u8>>,
     ) -> Result<(), VerificationError> {
         match self {
-            InnerReceipt::Flat(x) => x.verify_with_context(ctx, image_id.into(), journal),
+            InnerReceipt::Flat(x) => x.verify_with_context(ctx, image_id.into(), journals),
             InnerReceipt::Succinct(x) => x.verify_with_context(ctx),
             InnerReceipt::Fake => Self::verify_fake(),
         }
@@ -298,6 +309,9 @@ pub struct SegmentReceipt {
 
     /// Name of the hash function used to create this receipt.
     pub hashfn: String,
+
+    /// Number of executions
+    pub num_traces: u32,
 }
 
 /// Context available to the verification process.
@@ -308,8 +322,8 @@ pub struct VerifierContext {
 
 impl Receipt {
     /// Construct a new Receipt
-    pub fn new(inner: InnerReceipt, journal: Vec<u8>) -> Self {
-        Self { inner, journal }
+    pub fn new(inner: InnerReceipt, journals: Vec<Vec<u8>>) -> Self {
+        Self { inner, journals }
     }
 
     /// Verify the integrity of this receipt.
@@ -333,7 +347,8 @@ impl Receipt {
         ctx: &VerifierContext,
         image_id: impl Into<Digest>,
     ) -> Result<(), VerificationError> {
-        self.inner.verify_with_context(ctx, image_id, &self.journal)
+        self.inner
+            .verify_with_context(ctx, image_id, &self.journals)
     }
 
     /// Extract the [ReceiptMetadata] from this receipt for an excution session.

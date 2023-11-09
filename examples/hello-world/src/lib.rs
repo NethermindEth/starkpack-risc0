@@ -26,7 +26,7 @@ use risc0_zkvm::{
 // The factors a and b are kept secret.
 
 // Compute the product a*b inside the zkVM
-pub fn multiply(pairs: Vec<(u64, u64)>) -> (Receipt, u64) {
+pub fn multiply(pairs: Vec<(u64, u64)>) -> (Receipt, Vec<u64>) {
     let envs: Vec<ExecutorEnv<'_>> = pairs
         .into_iter()
         .map(|(a, b)| {
@@ -42,14 +42,18 @@ pub fn multiply(pairs: Vec<(u64, u64)>) -> (Receipt, u64) {
     // Produce a receipt by proving the specified ELF binary.
     let receipt = prover.prove_elf(envs, MULTIPLY_ELF).unwrap();
     // Extract journal of receipt (i.e. output c, where c = a * b)
-    let c: u64 = from_slice(&receipt.journal).expect(
-        "Journal output should deserialize into the same types (& order) that it was written",
-    );
+    let mut cs = Vec::new();
+    for journal in &receipt.journals {
+        let c: u64 = from_slice(journal).expect(
+            "Journal output should deserialize into the same types (& order) that it was written",
+        );
 
-    // Report the product
-    println!("I know the factors of {}, and I can prove it!", c);
+        // Report the product
+        println!("I know the factors of {}, and I can prove it!", c);
+        cs.push(c);
+    }
 
-    (receipt, c)
+    (receipt, cs)
 }
 
 #[cfg(test)]

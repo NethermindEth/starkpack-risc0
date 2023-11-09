@@ -207,6 +207,7 @@ where
         &mut self,
         seal: &'a [u32],
         check_code: CheckCodeFn,
+        num_traces: u32,
     ) -> Result<(), VerificationError>
     where
         CheckCodeFn: Fn(u32, &Digest) -> Result<(), VerificationError>,
@@ -214,7 +215,6 @@ where
         if seal.is_empty() {
             return Err(VerificationError::ReceiptFormatError);
         }
-        let (&num_traces, seal) = seal.split_last().unwrap();
         let num_traces = num_traces as usize;
 
         let taps = self.circuit.get_taps();
@@ -487,11 +487,12 @@ pub fn verify<F, C, CheckCode>(
     suite: &HashSuite<F>,
     seal: &[u32],
     check_code: CheckCode,
+    num_traces: u32,
 ) -> Result<(), VerificationError>
 where
     F: Field,
     C: CircuitCoreDef<F>,
     CheckCode: Fn(u32, &Digest) -> Result<(), VerificationError>,
 {
-    Verifier::<F, C>::new(circuit, suite).verify(seal, check_code)
+    Verifier::<F, C>::new(circuit, suite).verify(seal, check_code, num_traces)
 }

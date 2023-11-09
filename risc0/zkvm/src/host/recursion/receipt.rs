@@ -101,6 +101,9 @@ pub struct SuccinctReceipt {
     /// the receipt metadata containing states of the system during the segment
     /// executions
     pub meta: ReceiptMetadata,
+
+    /// Number of executions
+    pub num_traces: u32,
 }
 
 impl SuccinctReceipt {
@@ -119,7 +122,13 @@ impl SuccinctReceipt {
             .get("poseidon")
             .ok_or(VerificationError::InvalidHashSuite)?;
         // Verify the receipt itself is correct
-        risc0_zkp::verify::verify(&CIRCUIT_CORE, suite, &self.seal, check_code)?;
+        risc0_zkp::verify::verify(
+            &CIRCUIT_CORE,
+            suite,
+            &self.seal,
+            check_code,
+            self.num_traces,
+        )?;
         // Extract the globals from the seal
         let output_elems: &[BabyBearElem] =
             bytemuck::cast_slice(&self.seal[..CircuitImpl::OUTPUT_SIZE]);

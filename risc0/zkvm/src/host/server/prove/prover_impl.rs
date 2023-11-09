@@ -86,8 +86,9 @@ where
         //     }
         // }
         let inner = InnerReceipt::Flat(SegmentReceipts(segments));
-        //we will need to modify the journal as we have pub data of multiple traces
-        let receipt = Receipt::new(inner, pack_session.pack_journals[0].clone());
+        let receipt = Receipt::new(inner, pack_session.pack_journals);
+        // For the same program we will get the same image id
+        // Keep in mind to modify this for multiple programs
         let image_id = pack_session.pack_segments[0][0]
             .resolve()?
             .pre_image
@@ -168,12 +169,12 @@ where
             .collect();
 
         log::debug!("Globals: {:?}", OutBuffer(&out_slice_vec[0]).tree(&LAYOUT));
-        let mut seal = prover.finalize(globals_vec_ref_ref, circuit_hal.as_ref());
-        seal.push(num_traces as u32);
+        let seal = prover.finalize(globals_vec_ref_ref, circuit_hal.as_ref());
         let receipt = SegmentReceipt {
             seal,
             index: seg_index,
-            hashfn: hashfn.clone(),
+            hashfn: hashfn.to_string(),
+            num_traces: num_traces as u32,
         };
         receipt.verify_with_context(ctx)?;
         Ok(receipt)
