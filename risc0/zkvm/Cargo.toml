@@ -57,7 +57,7 @@ risc0-core = { workspace = true }
 generic-array = { version = "0.14", default-features = false, optional = true }
 getrandom = { version = "0.2", optional = true }
 gimli = { version = "0.27", optional = true }
-lazy-regex = { version = "2.4", optional = true }
+lazy-regex = { version = "3.1", optional = true }
 log = "0.4"
 crypto-bigint = { version = "0.5", default-features = false, features = [
   "rand",
