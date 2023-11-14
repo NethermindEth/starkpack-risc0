@@ -123,6 +123,8 @@ impl<'a, H: Hal> Prover<'a, H> {
             .map(|_| self.iop.random_ext_elem())
             .collect();
         let final_mix = self.iop.random_elem(); //H::ExtElem::ONE;
+                                                //let fmm = H::Elem::ONE;
+                                                //let fm = fmm + fmm;
         println!("prover mix {:?}", final_mix);
         let domain = self.cycles * INV_RATE;
         let ext_size = H::ExtElem::EXT_SIZE;
@@ -174,12 +176,15 @@ impl<'a, H: Hal> Prover<'a, H> {
             // Make the cur_poly which is a vector and not a buffer
             let mut cur_poly = Vec::new();
             check_poly.view(|cp| cur_poly = cp.to_vec());
-            // Multiply each coeff with the coresponding power of the final_mix
-            for &(mut coeff) in cur_poly.iter() {
-                coeff *= final_mix.pow(i);
+            let mut weigthed_poly = Vec::new();
+            // Multiply each coeff with the coresponding power of the final_mix;
+            for &coeff in cur_poly.iter() {
+                weighted_poly.push(coeff * final_mix.pow(i));
             }
             // Switch back to a buffer
-            let buf_poly = self.hal.copy_from_elem("cur_poly", &cur_poly.as_slice());
+            let buf_poly = self
+                .hal
+                .copy_from_elem("cur_poly", &weigthed_poly.as_slice());
             self.hal.eltwise_add_elem(&final_poly, &prev, &buf_poly);
         }
 
@@ -245,8 +250,17 @@ impl<'a, H: Hal> Prover<'a, H> {
                     let which = self.hal.copy_from_u32("which", which.as_slice());
                     let xs = self.hal.copy_from_extelem("xs", xs.as_slice());
                     let out = self.hal.alloc_extelem("out", which.size());
+                    let mut cur_poly = Vec::new();
+                    pg.coeffs_vec[index].view(|cp| cur_poly = cp.to_vec());
+                    //println!("before {:?}", cur_poly[0]);
+                    for &(mut coeff) in cur_poly.iter() {
+                        coeff *= final_mix.pow(index);
+                    }
+                    //println!("after {:?}", cur_poly[0]);
+                    // Switch back to a buffer
+                    let buf_poly = self.hal.copy_from_elem("cur_poly", &cur_poly.as_slice());
                     self.hal
-                        .batch_evaluate_any(&pg.coeffs_vec[index], pg.count, &which, &xs, &out);
+                        .batch_evaluate_any(&buf_poly, pg.count, &which, &xs, &out);
                     out.view(|view| {
                         eval_u.extend(view);
                     });

@@ -374,7 +374,7 @@ where
         // log::debug!("Check = {check:?}");
         let mut final_result = F::ExtElem::default();
         for index in 0..num_traces {
-            final_result += result_vec[index]; //* final_mix.pow(index);
+            final_result += result_vec[index] * final_mix.pow(index);
         }
         if check != final_result {
             println!("final_poly {:?}", final_result);
