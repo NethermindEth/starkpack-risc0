@@ -288,7 +288,7 @@ where
         // See DEEP-ALI protocol from DEEP-FRI paper for details on constraint mixing.
         let poly_mix_vec: Vec<<F as Field>::ExtElem> =
             (0..num_traces).map(|_| iop.random_ext_elem()).collect();
-        let _final_mix = iop.random_elem();
+        let final_mix = iop.random_elem();
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("check_merkle");
         let check_merkle: MerkleTreeVerifier<'_> =
