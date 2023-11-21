@@ -17,7 +17,9 @@ use hello_world_methods::MULTIPLY_ID;
 
 fn main() {
     // Pick two numbers
-    let pairs_to_multiply: Vec<(u64, u64)> = vec![(11, 17), (13, 17)];
+    // let num_traces = 5;
+    // let pairs_to_multiply = (2..=(num_traces + 1)).map(|i| (i, i + 1)).collect();
+    let pairs_to_multiply: Vec<(u64, u64)> = vec![(11, 13); 3];
     let (receipt, _) = multiply(pairs_to_multiply);
     // Here is where one would send 'receipt' over the network...
 

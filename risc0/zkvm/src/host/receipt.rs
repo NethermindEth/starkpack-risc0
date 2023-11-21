@@ -183,7 +183,7 @@ impl SegmentReceipts {
         let mut prev_image_id = image_id;
         for receipt in receipts {
             receipt.verify_with_context(ctx)?;
-            let metadata: ReceiptMetadata = receipt.get_metadata()?;
+            let metadata: ReceiptMetadata = receipt.get_metadata(0)?;
             log::debug!("metadata: {metadata:#?}");
             if prev_image_id != metadata.pre.digest() {
                 return Err(VerificationError::ImageVerificationError);
@@ -194,7 +194,7 @@ impl SegmentReceipts {
             prev_image_id = metadata.post.digest();
         }
         final_receipt.verify_with_context(ctx)?;
-        let metadata = final_receipt.get_metadata()?;
+        let metadata = final_receipt.get_metadata(0)?;
         log::debug!("final: {metadata:#?}");
         if prev_image_id != metadata.pre.digest() {
             return Err(VerificationError::ImageVerificationError);
@@ -204,9 +204,10 @@ impl SegmentReceipts {
             return Err(VerificationError::UnexpectedExitCode);
         }
 
-        for journal in journals {
+        for (trace_index, journal) in journals.iter().enumerate() {
             let digest = Sha256::digest(journal);
             let digest_words: &[u32] = bytemuck::cast_slice(digest.as_slice());
+            let metadata = final_receipt.get_metadata(trace_index)?;
             let output_words = metadata.output.as_words();
             println!("journal is empty: {}", journal.is_empty());
             println!(
@@ -217,6 +218,8 @@ impl SegmentReceipts {
                 "digest words equal output: {}",
                 digest_words == output_words
             );
+            println!("digest_words: {:?}", digest_words);
+            println!("output_words: {:?}", output_words);
             let is_journal_valid = || {
                 (journal.is_empty() && output_words.iter().all(|x| *x == 0))
                     || digest_words == output_words
@@ -359,7 +362,7 @@ impl Receipt {
                 .iter()
                 .last()
                 .ok_or(VerificationError::ReceiptFormatError)?
-                .get_metadata(),
+                .get_metadata(0),
             InnerReceipt::Succinct(ref succint_recipt) => Ok(succint_recipt.meta.clone()),
             InnerReceipt::Fake => unimplemented!("fake receipt does not implement metadata"),
         }
@@ -383,12 +386,13 @@ impl SegmentReceipt {
             .suites
             .get(&self.hashfn)
             .ok_or(VerificationError::InvalidHashSuite)?;
-        risc0_zkp::verify::verify(&super::CIRCUIT, suite, &self.seal, check_code)
+        risc0_zkp::verify::verify(&super::CIRCUIT, suite, &self.seal, check_code, 2)
     }
 
     /// Returns the [ReceiptMetadata] for this receipt.
-    pub fn get_metadata(&self) -> Result<ReceiptMetadata, VerificationError> {
+    pub fn get_metadata(&self, trace_index: usize) -> Result<ReceiptMetadata, VerificationError> {
         let elems = bytemuck::cast_slice(&self.seal);
+        let elems = &elems[139 * trace_index..];
         ReceiptMetadata::decode_from_io(layout::OutBuffer(elems))
     }
 

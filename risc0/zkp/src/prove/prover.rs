@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::Instant;
+
 use rayon::prelude::*;
 use risc0_core::field::{Elem, ExtElem, RootsOfUnity};
 
@@ -144,6 +146,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                 .iter()
                 .map(|pg| &pg.as_ref().unwrap().evaluated_vec[i])
                 .collect();
+            let start_eval_check = Instant::now();
             circuit_hal.eval_check(
                 &check_poly_vec[i],
                 groups.as_slice(),
@@ -152,6 +155,7 @@ impl<'a, H: Hal> Prover<'a, H> {
                 self.po2,
                 self.cycles,
             );
+            println!("Eval check time: {:?}", start_eval_check.elapsed());
         }
 
         #[cfg(feature = "circuit_debug")]
@@ -176,7 +180,7 @@ impl<'a, H: Hal> Prover<'a, H> {
             // Make the cur_poly which is a vector and not a buffer
             let mut cur_poly = Vec::new();
             check_poly.view(|cp| cur_poly = cp.to_vec());
-            let mut weigthed_poly = Vec::new();
+            let mut weighted_poly = Vec::new();
             // Multiply each coeff with the coresponding power of the final_mix;
             for &coeff in cur_poly.iter() {
                 weighted_poly.push(coeff * final_mix.pow(i));
@@ -184,7 +188,7 @@ impl<'a, H: Hal> Prover<'a, H> {
             // Switch back to a buffer
             let buf_poly = self
                 .hal
-                .copy_from_elem("cur_poly", &weigthed_poly.as_slice());
+                .copy_from_elem("cur_poly", &weighted_poly.as_slice());
             self.hal.eltwise_add_elem(&final_poly, &prev, &buf_poly);
         }
 

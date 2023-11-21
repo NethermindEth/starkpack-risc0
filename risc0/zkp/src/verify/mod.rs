@@ -378,7 +378,6 @@ where
         }
         if check != final_result {
             println!("final_poly {:?}", final_result);
-            println!("check {:?}", check);
             return Err(VerificationError::InvalidProof);
         }
         // Set the mix mix value, pseudorandom value used for FRI batching
