@@ -172,9 +172,14 @@ where
             let _this_tap_mix = &tap_cache.tap_mix_pows[index * taps_size..(index + 1) * taps_size];
             // for (i, (reg, cur)) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()).enumerate() {
             for (reg, cur) in zip(taps.regs(), _this_tap_mix) {
-                tot[index * combo_count + reg.combo_id()] +=
-                //This may not be the reg.size() this may be the taps.group_size(reg.group())
-                *cur * rows[reg.group()][index * taps.group_size(reg.group()) + reg.offset()];
+                if reg.group() == 1 {
+                    tot[index * combo_count + reg.combo_id()] +=
+                        *cur * rows[reg.group()][reg.offset()];
+                } else {
+                    tot[index * combo_count + reg.combo_id()] +=
+                    //This may not be the reg.size() this may be the taps.group_size(reg.group())
+                    *cur * rows[reg.group()][index * taps.group_size(reg.group()) + reg.offset()];
+                }
             }
         }
         for (i, cur) in zip(0..Self::CHECK_SIZE, tap_cache.check_mix_pows.iter()) {
@@ -240,11 +245,11 @@ where
         // The code merkle tree contains the control instructions for the zkVM.
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("code_merkle");
-        let code_merkle =
-            MerkleTreeVerifier::new(&mut iop, hashfn, domain, num_traces * code_size, QUERIES);
+        let code_merkle = MerkleTreeVerifier::new(&mut iop, hashfn, domain, code_size, QUERIES);
         // log::debug!("codeRoot = {}", code_merkle.root());
-        //check_code(self.po2, code_merkle.root())?;
-        let _ = check_code;
+        check_code(self.po2, code_merkle.root())?;
+        println!("Merkle check passed!!");
+        //let _ = check_code;
 
         // Get merkle root for the data merkle tree.
         // The data merkle tree contains the execution trace of the program being run,
@@ -283,8 +288,7 @@ where
         // See DEEP-ALI protocol from DEEP-FRI paper for details on constraint mixing.
         let poly_mix_vec: Vec<<F as Field>::ExtElem> =
             (0..num_traces).map(|_| iop.random_ext_elem()).collect();
-        let final_mix = iop.random_elem(); //F::Elem::ONE;
-        println!("verifeir mix {:?}", final_mix);
+        let _final_mix = iop.random_elem();
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("check_merkle");
         let check_merkle: MerkleTreeVerifier<'_> =
@@ -377,8 +381,7 @@ where
             final_result += result_vec[index] * final_mix.pow(index);
         }
         if check != final_result {
-            println!("final_poly {:?}", final_result);
-            println!("check {:?}", check);
+            println!("Error is here");
             return Err(VerificationError::InvalidProof);
         }
         // Set the mix mix value, pseudorandom value used for FRI batching
@@ -462,7 +465,6 @@ where
         for _ in 1..num_traces {
             self.out_vec
                 .push(Some(iop.read_field_elem_slice(C::OUTPUT_SIZE)));
-            //let _ = *iop.read_u32s(1).first().unwrap();
         }
     }
 

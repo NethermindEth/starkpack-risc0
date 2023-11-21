@@ -11,6 +11,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+use super::{HalPair, ProverServer};
+use crate::{
+    host::{receipt::SegmentReceipts, server::packer::PackSession, CIRCUIT},
+    InnerReceipt, Receipt, Segment, SegmentReceipt, VerifierContext,
+};
 use anyhow::Result;
 use risc0_circuit_rv32im::{
     layout::{OutBuffer, LAYOUT},
@@ -22,13 +27,8 @@ use risc0_zkp::{
     hal::{CircuitHal, Hal},
     layout::Buffer,
 };
+use std::mem;
 use std::time::Instant;
-
-use super::{HalPair, ProverServer};
-use crate::{
-    host::{receipt::SegmentReceipts, server::packer::PackSession, CIRCUIT},
-    InnerReceipt, Receipt, Segment, SegmentReceipt, VerifierContext,
-};
 
 /// An implementation of a Prover that runs locally.
 pub struct ProverImpl<H, C>
@@ -117,21 +117,26 @@ where
 
         let mut prover: risc0_zkp::prove::Prover<'_, H> =
             risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
+
         let num_traces = adapters.len();
+        //The first adapter writes the public data and sets the po2
+        //while all the other adpaters just write their public data
         adapters[0].execute_first(prover.iop());
         prover.set_po2(adapters[0].po2() as usize);
         for i in 1..num_traces {
             adapters[i].execute(prover.iop());
         }
-        let code_vec = adapters
-            .iter()
-            .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
-            .collect();
+
+        // let code_vec = adapters
+        //     .iter()
+        //     .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
+        //     .collect();
+        let code = hal.copy_from_elem("code", &adapters[0].get_code().as_slice());
         let data_vec = adapters
             .iter()
             .map(|adapter| hal.copy_from_elem("data", &adapter.get_data().as_slice()))
             .collect();
-        prover.commit_group(REGISTER_GROUP_CODE, code_vec);
+        prover.commit_group(REGISTER_GROUP_CODE, vec![code]);
         prover.commit_group(REGISTER_GROUP_DATA, data_vec);
 
         for adapter in adapters.iter_mut() {
@@ -169,6 +174,7 @@ where
 
         log::debug!("Globals: {:?}", OutBuffer(&out_slice_vec[0]).tree(&LAYOUT));
         let mut seal = prover.finalize(globals_vec_ref_ref, circuit_hal.as_ref());
+        println!("proof size = {:?}", seal.len() * mem::size_of::<u32>());
         seal.push(num_traces as u32);
         let receipt = SegmentReceipt {
             seal,
