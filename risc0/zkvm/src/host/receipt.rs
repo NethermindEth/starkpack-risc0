@@ -183,43 +183,32 @@ impl SegmentReceipts {
         let mut prev_image_id = image_id;
         for receipt in receipts {
             receipt.verify_with_context(ctx)?;
-            let metadata: ReceiptMetadata = receipt.get_metadata(0)?;
+            let metadata = receipt.get_metadata()?;
             log::debug!("metadata: {metadata:#?}");
-            if prev_image_id != metadata.pre.digest() {
+            if prev_image_id != metadata[0].pre.digest() {
                 return Err(VerificationError::ImageVerificationError);
             }
-            if metadata.exit_code != ExitCode::SystemSplit {
+            if metadata[0].exit_code != ExitCode::SystemSplit {
                 return Err(VerificationError::UnexpectedExitCode);
             }
-            prev_image_id = metadata.post.digest();
+            prev_image_id = metadata[0].post.digest();
         }
         final_receipt.verify_with_context(ctx)?;
-        let metadata = final_receipt.get_metadata(0)?;
+        let metadata = final_receipt.get_metadata()?;
         log::debug!("final: {metadata:#?}");
-        if prev_image_id != metadata.pre.digest() {
+        if prev_image_id != metadata[0].pre.digest() {
             return Err(VerificationError::ImageVerificationError);
         }
 
-        if metadata.exit_code == ExitCode::SystemSplit {
+        if metadata[0].exit_code == ExitCode::SystemSplit {
             return Err(VerificationError::UnexpectedExitCode);
         }
 
         for (trace_index, journal) in journals.iter().enumerate() {
             let digest = Sha256::digest(journal);
             let digest_words: &[u32] = bytemuck::cast_slice(digest.as_slice());
-            let metadata = final_receipt.get_metadata(trace_index)?;
+            let metadata = &metadata[trace_index];
             let output_words = metadata.output.as_words();
-            println!("journal is empty: {}", journal.is_empty());
-            println!(
-                "output words are zero: {}",
-                output_words.iter().all(|x| *x == 0)
-            );
-            println!(
-                "digest words equal output: {}",
-                digest_words == output_words
-            );
-            println!("digest_words: {:?}", digest_words);
-            println!("output_words: {:?}", output_words);
             let is_journal_valid = || {
                 (journal.is_empty() && output_words.iter().all(|x| *x == 0))
                     || digest_words == output_words
@@ -357,12 +346,15 @@ impl Receipt {
     /// Extract the [ReceiptMetadata] from this receipt for an excution session.
     pub fn get_metadata(&self) -> Result<ReceiptMetadata, VerificationError> {
         match self.inner {
-            InnerReceipt::Flat(ref segment_receipts) => segment_receipts
-                .0
-                .iter()
-                .last()
-                .ok_or(VerificationError::ReceiptFormatError)?
-                .get_metadata(0),
+            InnerReceipt::Flat(ref segment_receipts) => {
+                let last_segment = segment_receipts
+                    .0
+                    .iter()
+                    .last()
+                    .ok_or(VerificationError::ReceiptFormatError)?;
+                let metadata = last_segment.clone().get_metadata()?;
+                Ok(metadata.first().unwrap().clone())
+            }
             InnerReceipt::Succinct(ref succint_recipt) => Ok(succint_recipt.meta.clone()),
             InnerReceipt::Fake => unimplemented!("fake receipt does not implement metadata"),
         }
@@ -396,19 +388,21 @@ impl SegmentReceipt {
     }
 
     /// Returns the [ReceiptMetadata] for this receipt.
-    pub fn get_metadata(&self, trace_index: usize) -> Result<ReceiptMetadata, VerificationError> {
+    pub fn get_metadata(&self) -> Result<Vec<ReceiptMetadata>, VerificationError> {
         let elems = bytemuck::cast_slice(&self.seal);
         let io_offset = 138;
         let ios = &elems[..(io_offset * self.num_traces) as usize];
         let seal_without_ios = &elems[(io_offset * self.num_traces) as usize..];
-        let this_io =
-            &ios[io_offset as usize * trace_index..io_offset as usize * (trace_index + 1)];
-        let this_seal = [this_io, seal_without_ios].concat();
-        for (i, io) in this_io.iter().enumerate() {
-            println!("IO({}) = {:?}", i, io);
+        let mut metadata_vec = Vec::new();
+        for trace_index in 0..self.num_traces {
+            let this_io =
+                &ios[(io_offset * trace_index) as usize..(io_offset * (trace_index + 1)) as usize];
+            let this_seal = [this_io, seal_without_ios].concat();
+            metadata_vec.push(ReceiptMetadata::decode_from_io(layout::OutBuffer(
+                &this_seal,
+            ))?);
         }
-        println!("Todo bien");
-        ReceiptMetadata::decode_from_io(layout::OutBuffer(&this_seal))
+        Ok(metadata_vec)
     }
 
     /// Return the seal for this receipt, as a slice of bytes.
@@ -450,7 +444,6 @@ impl ReceiptMetadata {
             .get_bytes()
             .or(Err(VerificationError::ReceiptFormatError))?;
         let input = Digest::try_from(input_bytes).or(Err(VerificationError::ReceiptFormatError))?;
-        println!("Todo bien decode");
         let output_bytes: Vec<u8> = io
             .tree(body.global.output)
             .get_bytes()
