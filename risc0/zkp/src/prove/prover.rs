@@ -124,6 +124,7 @@ impl<'a, H: Hal> Prover<'a, H> {
         let poly_mix_vec: Vec<<H as Hal>::ExtElem> = (0..num_traces)
             .map(|_| self.iop.random_ext_elem())
             .collect();
+        println!("poly_mix_vec:\n{:?}", poly_mix_vec);
         let final_mix = self.iop.random_elem(); //H::ExtElem::ONE;
                                                 //let fmm = H::Elem::ONE;
                                                 //let fm = fmm + fmm;
@@ -225,6 +226,7 @@ impl<'a, H: Hal> Prover<'a, H> {
         //   iop.write(&Z, 1);
         // #endif
         //   LOG(1, "Z = " << Z);
+        println!("prover z = {:?}", z);
 
         // Get rev rou for size
         let back_one = H::ExtElem::from_subfield(&H::Elem::ROU_REV[self.po2]);
@@ -309,6 +311,7 @@ impl<'a, H: Hal> Prover<'a, H> {
             .get_hash_suite()
             .hashfn
             .hash_ext_elem_slice(coeff_u.as_slice());
+        println!("prover hash_u = {:?}", hash_u);
         self.iop.commit(&hash_u);
 
         // Set the mix mix value, which is used for FRI batching.

@@ -283,8 +283,9 @@ where
         // See DEEP-ALI protocol from DEEP-FRI paper for details on constraint mixing.
         let poly_mix_vec: Vec<<F as Field>::ExtElem> =
             (0..num_traces).map(|_| iop.random_ext_elem()).collect();
+        println!("poly_mix_vec:\n{:?}", poly_mix_vec);
         let final_mix = iop.random_elem(); //F::Elem::ONE;
-        println!("verifeir mix {:?}", final_mix);
+        println!("verifier mix {:?}", final_mix);
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("check_merkle");
         let check_merkle: MerkleTreeVerifier<'_> =
@@ -294,6 +295,7 @@ where
         // Get a pseudorandom DEEP query point
         // See DEEP-ALI protocol from DEEP-FRI paper for details on DEEP query.
         let z = iop.random_ext_elem();
+        println!("verifier z = {:?}", z);
         // log::debug!("Z = {z:?}");
         let back_one = F::Elem::ROU_REV[self.po2 as usize];
 
@@ -301,6 +303,7 @@ where
         let num_taps: usize = taps.tap_size();
         let coeff_u = iop.read_field_elem_slice(num_traces * num_taps + Self::CHECK_SIZE);
         let hash_u = self.suite.hashfn.hash_ext_elem_slice(coeff_u);
+        println!("verifier hash_u = {:?}", hash_u);
         iop.commit(&hash_u);
         // Now, convert U polynomials from coefficient form to evaluation form
         let mut cur_pos = 0;
@@ -456,13 +459,12 @@ where
         // Read the outputs + size
         self.out_vec
             .push(Some(iop.read_field_elem_slice(C::OUTPUT_SIZE)));
-        self.po2 = *iop.read_u32s(1).first().unwrap();
-        self.steps = 1 << self.po2;
         for _ in 1..num_traces {
             self.out_vec
                 .push(Some(iop.read_field_elem_slice(C::OUTPUT_SIZE)));
-            //let _ = *iop.read_u32s(1).first().unwrap();
         }
+        self.po2 = *iop.read_u32s(1).first().unwrap();
+        self.steps = 1 << self.po2;
     }
 
     /// Evaluate a polynomial whose coefficients are in the extension field at a

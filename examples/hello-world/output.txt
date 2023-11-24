@@ -1,6 +1,0 @@
-prover mix 1977470111
-Eval check time: 16.440063705s
-Eval check time: 15.495181816s
-Eval check time: 15.520278821s
-verifeir mix 393976024
-final_poly [453570459, 1993885840, 401521617, 419754153]

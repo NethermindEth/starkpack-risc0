@@ -119,11 +119,11 @@ where
         let mut prover: risc0_zkp::prove::Prover<'_, H> =
             risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
         let num_traces = adapters.len();
-        adapters[0].execute_first(prover.iop());
-        prover.set_po2(adapters[0].po2() as usize);
-        for i in 1..num_traces {
+        for i in 0..num_traces - 1 {
             adapters[i].execute(prover.iop());
         }
+        adapters[num_traces - 1].execute_last(prover.iop());
+        prover.set_po2(adapters[0].po2() as usize);
         let code_vec = adapters
             .iter()
             .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))

@@ -386,14 +386,29 @@ impl SegmentReceipt {
             .suites
             .get(&self.hashfn)
             .ok_or(VerificationError::InvalidHashSuite)?;
-        risc0_zkp::verify::verify(&super::CIRCUIT, suite, &self.seal, check_code, 2)
+        risc0_zkp::verify::verify(
+            &super::CIRCUIT,
+            suite,
+            &self.seal,
+            check_code,
+            self.num_traces,
+        )
     }
 
     /// Returns the [ReceiptMetadata] for this receipt.
     pub fn get_metadata(&self, trace_index: usize) -> Result<ReceiptMetadata, VerificationError> {
         let elems = bytemuck::cast_slice(&self.seal);
-        let elems = &elems[139 * trace_index..];
-        ReceiptMetadata::decode_from_io(layout::OutBuffer(elems))
+        let io_offset = 138;
+        let ios = &elems[..(io_offset * self.num_traces) as usize];
+        let seal_without_ios = &elems[(io_offset * self.num_traces) as usize..];
+        let this_io =
+            &ios[io_offset as usize * trace_index..io_offset as usize * (trace_index + 1)];
+        let this_seal = [this_io, seal_without_ios].concat();
+        for (i, io) in this_io.iter().enumerate() {
+            println!("IO({}) = {:?}", i, io);
+        }
+        println!("Todo bien");
+        ReceiptMetadata::decode_from_io(layout::OutBuffer(&this_seal))
     }
 
     /// Return the seal for this receipt, as a slice of bytes.
@@ -435,6 +450,7 @@ impl ReceiptMetadata {
             .get_bytes()
             .or(Err(VerificationError::ReceiptFormatError))?;
         let input = Digest::try_from(input_bytes).or(Err(VerificationError::ReceiptFormatError))?;
+        println!("Todo bien decode");
         let output_bytes: Vec<u8> = io
             .tree(body.global.output)
             .get_bytes()
