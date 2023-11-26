@@ -170,15 +170,13 @@ where
         let taps_size = tap_cache.tap_mix_pows.len() / num_traces;
         for index in 0..num_traces {
             let _this_tap_mix = &tap_cache.tap_mix_pows[index * taps_size..(index + 1) * taps_size];
-            // for (i, (reg, cur)) in zip(taps.regs(), tap_cache.tap_mix_pows.iter()).enumerate() {
             for (reg, cur) in zip(taps.regs(), _this_tap_mix) {
                 if reg.group() == 1 {
                     tot[index * combo_count + reg.combo_id()] +=
                         *cur * rows[reg.group()][reg.offset()];
                 } else {
-                    tot[index * combo_count + reg.combo_id()] +=
-                    //This may not be the reg.size() this may be the taps.group_size(reg.group())
-                    *cur * rows[reg.group()][index * taps.group_size(reg.group()) + reg.offset()];
+                    tot[index * combo_count + reg.combo_id()] += *cur
+                        * rows[reg.group()][index * taps.group_size(reg.group()) + reg.offset()];
                 }
             }
         }
@@ -248,8 +246,6 @@ where
         let code_merkle = MerkleTreeVerifier::new(&mut iop, hashfn, domain, code_size, QUERIES);
         // log::debug!("codeRoot = {}", code_merkle.root());
         check_code(self.po2, code_merkle.root())?;
-        println!("Merkle check passed!!");
-        //let _ = check_code;
 
         // Get merkle root for the data merkle tree.
         // The data merkle tree contains the execution trace of the program being run,
@@ -354,7 +350,6 @@ where
         // However, for generic fields the extension degree may be different
         // TODO: Therefore just using the to/from baby bear shims for now
 
-        //Not sure if this works
         let mut check = F::ExtElem::default();
         let remap = [0, 2, 1, 3];
         let fp0 = F::Elem::ZERO;

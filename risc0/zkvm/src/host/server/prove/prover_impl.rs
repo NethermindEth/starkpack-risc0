@@ -126,10 +126,6 @@ where
         prover.set_po2(adapters[0].po2() as usize); // all po2 are set to be the same in executors
                                                     // so we take the first
 
-        // let code_vec = adapters
-        //     .iter()
-        //     .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
-        //     .collect();
         let code = hal.copy_from_elem("code", &adapters[0].get_code().as_slice());
         let data_vec = adapters
             .iter()

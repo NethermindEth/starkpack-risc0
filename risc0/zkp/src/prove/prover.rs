@@ -131,18 +131,11 @@ impl<'a, H: Hal> Prover<'a, H> {
         // satisfied, the check polynomial will be a low-degree polynomial. See
         // DEEP-ALI paper for details on the construction of the check_poly.
 
-        //let check_poly: Vec<<H as Hal>::Buffer<<H as Hal>::Elem>> = self.hal.alloc_elem("check_poly", ext_size * domain);
         let check_poly_vec: Vec<<H as Hal>::Buffer<<H as Hal>::Elem>> = (0..num_traces)
             .map(|_| self.hal.alloc_elem("check_poly", ext_size * domain))
             .collect();
-        //let code_group = self.groups[0];
         let code_eval = &self.groups[1].as_ref().unwrap().evaluated_vec[0];
         for i in 0..num_traces {
-            // let groups: Vec<&_> = self
-            //     .groups
-            //     .iter()
-            //     .map(|pg| &pg.as_ref().unwrap().evaluated_vec[i])
-            //     .collect();
             let mut groups = Vec::new();
             groups.push(&self.groups[0].as_ref().unwrap().evaluated_vec[i]);
             groups.push(code_eval);
@@ -445,7 +438,6 @@ impl<'a, H: Hal> Prover<'a, H> {
         // Sum the combos up into one final polynomial + make it into 4 Fp polys.
         // Additionally, it needs to be bit reversed to make everyone happy
 
-        //maybe we should multiply with the number of traces here
         let final_poly_coeffs = self
             .hal
             .alloc_elem("final_poly_coeffs", self.cycles * ext_size);
