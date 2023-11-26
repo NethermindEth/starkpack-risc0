@@ -53,7 +53,6 @@ use crate::{
 /// of queries is less than the randomized padding.
 pub struct PolyGroup<H: Hal> {
     pub coeffs_vec: Vec<H::Buffer<H::Elem>>,
-    //We may need a vector of counts
     pub count: usize,
     pub evaluated_vec: Vec<H::Buffer<H::Elem>>,
     pub merkle: MerkleTreeProver<H>,

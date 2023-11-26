@@ -11,6 +11,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+use super::{HalPair, ProverServer};
+use crate::{
+    host::{receipt::SegmentReceipts, server::packer::PackSession, CIRCUIT},
+    InnerReceipt, Receipt, Segment, SegmentReceipt, VerifierContext,
+};
 use anyhow::Result;
 use risc0_circuit_rv32im::{
     layout::{OutBuffer, LAYOUT},
@@ -23,12 +28,6 @@ use risc0_zkp::{
     layout::Buffer,
 };
 use std::time::Instant;
-
-use super::{HalPair, ProverServer};
-use crate::{
-    host::{receipt::SegmentReceipts, server::packer::PackSession, CIRCUIT},
-    InnerReceipt, Receipt, Segment, SegmentReceipt, VerifierContext,
-};
 
 /// An implementation of a Prover that runs locally.
 pub struct ProverImpl<H, C>
@@ -118,21 +117,25 @@ where
 
         let mut prover: risc0_zkp::prove::Prover<'_, H> =
             risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
+
         let num_traces = adapters.len();
         for i in 0..num_traces - 1 {
             adapters[i].execute(prover.iop());
         }
         adapters[num_traces - 1].execute_last(prover.iop());
-        prover.set_po2(adapters[0].po2() as usize);
-        let code_vec = adapters
-            .iter()
-            .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
-            .collect();
+        prover.set_po2(adapters[0].po2() as usize); // all po2 are set to be the same in executors
+                                                    // so we take the first
+
+        // let code_vec = adapters
+        //     .iter()
+        //     .map(|adapter| hal.copy_from_elem("code", &adapter.get_code().as_slice()))
+        //     .collect();
+        let code = hal.copy_from_elem("code", &adapters[0].get_code().as_slice());
         let data_vec = adapters
             .iter()
             .map(|adapter| hal.copy_from_elem("data", &adapter.get_data().as_slice()))
             .collect();
-        prover.commit_group(REGISTER_GROUP_CODE, code_vec);
+        prover.commit_group(REGISTER_GROUP_CODE, vec![code]);
         prover.commit_group(REGISTER_GROUP_DATA, data_vec);
 
         for adapter in adapters.iter_mut() {

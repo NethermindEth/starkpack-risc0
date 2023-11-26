@@ -123,8 +123,6 @@ impl<'a, H: Hal> Prover<'a, H> {
             .map(|_| self.iop.random_ext_elem())
             .collect();
         let final_mix = self.iop.random_elem(); //H::ExtElem::ONE;
-                                                //let fmm = H::Elem::ONE;
-                                                //let fm = fmm + fmm;
         let domain = self.cycles * INV_RATE;
         let ext_size = H::ExtElem::EXT_SIZE;
 
@@ -137,12 +135,18 @@ impl<'a, H: Hal> Prover<'a, H> {
         let check_poly_vec: Vec<<H as Hal>::Buffer<<H as Hal>::Elem>> = (0..num_traces)
             .map(|_| self.hal.alloc_elem("check_poly", ext_size * domain))
             .collect();
+        //let code_group = self.groups[0];
+        let code_eval = &self.groups[1].as_ref().unwrap().evaluated_vec[0];
         for i in 0..num_traces {
-            let groups: Vec<&_> = self
-                .groups
-                .iter()
-                .map(|pg| &pg.as_ref().unwrap().evaluated_vec[i])
-                .collect();
+            // let groups: Vec<&_> = self
+            //     .groups
+            //     .iter()
+            //     .map(|pg| &pg.as_ref().unwrap().evaluated_vec[i])
+            //     .collect();
+            let mut groups = Vec::new();
+            groups.push(&self.groups[0].as_ref().unwrap().evaluated_vec[i]);
+            groups.push(code_eval);
+            groups.push(&self.groups[2].as_ref().unwrap().evaluated_vec[i]);
             circuit_hal.eval_check(
                 &check_poly_vec[i],
                 groups.as_slice(),
@@ -236,8 +240,6 @@ impl<'a, H: Hal> Prover<'a, H> {
             tracing::info_span!("eval_u").in_scope(|| {
                 for (id, pg) in self.groups.iter().enumerate() {
                     let pg = pg.as_ref().unwrap();
-
-                    //maybe this needs to be modified
                     let mut which = Vec::new();
                     let mut xs = Vec::new();
                     for tap in self.taps.group_taps(id) {
@@ -249,17 +251,27 @@ impl<'a, H: Hal> Prover<'a, H> {
                     let which = self.hal.copy_from_u32("which", which.as_slice());
                     let xs = self.hal.copy_from_extelem("xs", xs.as_slice());
                     let out = self.hal.alloc_extelem("out", which.size());
-                    let mut cur_poly = Vec::new();
-                    pg.coeffs_vec[index].view(|cp| cur_poly = cp.to_vec());
-                    //println!("before {:?}", cur_poly[0]);
-                    for &(mut coeff) in cur_poly.iter() {
-                        coeff *= final_mix.pow(index);
+                    if id == 1 {
+                        let mut cur_poly = Vec::new();
+                        pg.coeffs_vec[0].view(|cp| cur_poly = cp.to_vec());
+                        for &(mut coeff) in cur_poly.iter() {
+                            coeff *= final_mix.pow(index);
+                        }
+                        // Switch back to a buffer
+                        let buf_poly = self.hal.copy_from_elem("cur_poly", &cur_poly.as_slice());
+                        self.hal
+                            .batch_evaluate_any(&buf_poly, pg.count, &which, &xs, &out);
+                    } else {
+                        let mut cur_poly = Vec::new();
+                        pg.coeffs_vec[index].view(|cp| cur_poly = cp.to_vec());
+                        for &(mut coeff) in cur_poly.iter() {
+                            coeff *= final_mix.pow(index);
+                        }
+                        // Switch back to a buffer
+                        let buf_poly = self.hal.copy_from_elem("cur_poly", &cur_poly.as_slice());
+                        self.hal
+                            .batch_evaluate_any(&buf_poly, pg.count, &which, &xs, &out);
                     }
-                    //println!("after {:?}", cur_poly[0]);
-                    // Switch back to a buffer
-                    let buf_poly = self.hal.copy_from_elem("cur_poly", &cur_poly.as_slice());
-                    self.hal
-                        .batch_evaluate_any(&buf_poly, pg.count, &which, &xs, &out);
                     out.view(|view| {
                         eval_u.extend(view);
                     });
@@ -334,15 +346,28 @@ impl<'a, H: Hal> Prover<'a, H> {
                             let which = self.hal.copy_from_u32("which", &this_which.as_slice());
                             let combo_chunk_buf =
                                 self.hal.copy_from_extelem("combo_chunk", combo_chunk);
-                            self.hal.mix_poly_coeffs(
-                                &combo_chunk_buf,
-                                &cur_mix,
-                                &mix,
-                                &pg.coeffs_vec[trace_id],
-                                &which,
-                                group_size,
-                                self.cycles,
-                            );
+                            if id == 1 {
+                                self.hal.mix_poly_coeffs(
+                                    &combo_chunk_buf,
+                                    &cur_mix,
+                                    &mix,
+                                    &pg.coeffs_vec[0],
+                                    &which,
+                                    group_size,
+                                    self.cycles,
+                                );
+                            } else {
+                                self.hal.mix_poly_coeffs(
+                                    &combo_chunk_buf,
+                                    &cur_mix,
+                                    &mix,
+                                    &pg.coeffs_vec[trace_id],
+                                    &which,
+                                    group_size,
+                                    self.cycles,
+                                );
+                            }
+
                             cur_mix *= mix.pow(group_size);
                             num_mix_powers += group_size;
 
