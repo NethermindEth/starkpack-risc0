@@ -9,6 +9,7 @@ members = [
   "digital-signature/core",
   "ecdsa",
   "hello-world",
+  "hello-recursion",
   "json",
   "json/core",
   "password-checker",

@@ -1,10 +1,10 @@
 [package]
-name = "hello-world"
+name = "hello-recursion"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-hello-world-methods = { path = "methods" }
+hello-recursion-methods = { path = "methods" }
 risc0-zkvm = { path = "../../risc0/zkvm" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -13,3 +13,4 @@ serde_json = "1.0"
 cuda = ["risc0-zkvm/cuda"]
 default = []
 metal = ["risc0-zkvm/metal"]
+

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::{fs::File, io::Write};
+
 use hello_world::multiply;
 use hello_world_methods::MULTIPLY_ID;
 
@@ -25,4 +27,8 @@ fn main() {
     receipt.verify(MULTIPLY_ID).expect(
         "Code you have proven should successfully verify; did you specify the correct image ID?",
     );
+
+    let ser_proof = serde_json::to_string(&receipt).unwrap();
+    let mut proof_file = File::create("receipt.json").unwrap();
+    proof_file.write_all(ser_proof.as_bytes()).unwrap();
 }
