@@ -21,14 +21,14 @@ use crate::{
     INV_RATE, QUERIES,
 };
 
-/// A PolyGroup represents a group of polynomials, all of the same maximum
+/// A PolyGroup represents a group of vector of polynomials, all of the same maximum
 /// degree, as well as the evaluation of those polynomials over some domain that
 /// is larger than that degree by some invRate. Additionally, it includes a
 /// dense Merkle tree, where each entry is a single point of the domain, and the
-/// leaf hash is a simple linear hash of all of the values at that point.  That
-/// is, if we have 100 polynomials evaluated on 2^16 points, the merkle tree has
-/// 2^16 entries, each being a hash of 100 values.  The size of the domain is
-/// always a power of 2 so that we can use NTTs.
+/// leaf hash is a simple linear hash of all of the values at that point.
+/// That is, if we have n proofs and  each consisting of 100 polynomials evaluated on 2^16 points,
+/// the merkle tree has 2^16 entries, each being a hash of n*100 values. 
+/// The size of the domain is always a power of 2 so that we can use NTTs.
 ///
 /// The primary purpose of the PolyGroup is for use in the DEEP-ALI protocol,
 /// which basically needs 4 methods during proof generation, specifically we
@@ -78,8 +78,9 @@ impl<H: Hal> PolyGroup<H> {
             hal.batch_expand_into_evaluate_ntt(&evaluated, &coeffs, count, log2_ceil(INV_RATE));
             hal.batch_bit_reverse(&coeffs, count);
         }
-        //Here we combine all the evaluations into one evaluated_matrix and construct the merkle tree from it
-        //This may not be the best approach but modifying the MerkleTreeProver struct is even worse
+        // Combines the evaluations of all the traces into one evaluated_matrix 
+        // and constructs the Merkle tree from it
+        
         let evaluated_matrix = evaluated_vec.iter().fold(vec![], |acc, evaluated| {
             let mut p = Vec::new();
             evaluated.view(|evaluated| p = [acc, evaluated.to_vec()].concat());

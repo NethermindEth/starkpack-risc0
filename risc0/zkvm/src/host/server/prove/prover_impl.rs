@@ -59,7 +59,6 @@ where
     C: CircuitHal<H>,
 {
     fn prove_session(&self, ctx: &VerifierContext, pack_session: PackSession) -> Result<Receipt> {
-        /* Here we start changing the code to introduce StarkPack */
         log::info!("prove_session: {}", self.name);
         let pack_segments = pack_session.resolve_packed_segments()?;
         let _num_traces = pack_segments.len();
@@ -95,7 +94,7 @@ where
         receipt.verify_with_context(ctx, image_id)?;
         Ok(receipt)
     }
-
+    /// Generates a single proof for a vector of segments
     fn prove_segment(
         &self,
         ctx: &VerifierContext,
@@ -119,19 +118,26 @@ where
             risc0_zkp::prove::Prover::new(hal, CIRCUIT.get_taps());
 
         let num_traces = adapters.len();
+        /// Writes the input/output data of the first n-1 the adapters into the IOP
         for i in 0..num_traces - 1 {
             adapters[i].execute(prover.iop());
         }
+        /// Writes the input/output data of the last adapter and the po2 into the IOP
         adapters[num_traces - 1].execute_last(prover.iop());
-        prover.set_po2(adapters[0].po2() as usize); // all po2 are set to be the same in executors
-                                                    // so we take the first
+        prover.set_po2(adapters[0].po2() as usize); // all po2s are set to be the same in executors
+                                                    // so take the first
 
+        // Since risc0 uses universal arithmetization all the code colums of the same length are identical
+        // This means there's no need for each trace to maintain unique code columns;
+        // instead, all the traces will share the same set of columns.
         let code = hal.copy_from_elem("code", &adapters[0].get_code().as_slice());
         let data_vec = adapters
             .iter()
             .map(|adapter| hal.copy_from_elem("data", &adapter.get_data().as_slice()))
             .collect();
+        /// Commmits to the code colums
         prover.commit_group(REGISTER_GROUP_CODE, vec![code]);
+        /// Commmits to the data colums of all the traces using a single Merkle tree
         prover.commit_group(REGISTER_GROUP_DATA, data_vec);
 
         for adapter in adapters.iter_mut() {
@@ -141,9 +147,9 @@ where
             .iter()
             .map(|adapter| hal.copy_from_elem("accum", &adapter.get_accum().as_slice()))
             .collect();
+        /// Commmits to the accumulator colums of all the traces using a single Merkle tree
         prover.commit_group(REGISTER_GROUP_ACCUM, accum_vec);
 
-        // Creating three vectors is very not ideal, we should use Another type to represent this
         let mut globals_vec = Vec::new();
         for adapter in adapters.iter() {
             let globals = [
@@ -168,6 +174,7 @@ where
             .collect();
 
         log::debug!("Globals: {:?}", OutBuffer(&out_slice_vec[0]).tree(&LAYOUT));
+        /// Creates the STARKPack proof which proofs the exection of all the segments
         let seal = prover.finalize(globals_vec_ref_ref, circuit_hal.as_ref());
         let receipt = SegmentReceipt {
             seal,

@@ -102,7 +102,7 @@ pub struct SuccinctReceipt {
     /// executions
     pub meta: ReceiptMetadata,
 
-    /// Number of executions
+    /// Number of the traces in the STARKPack
     pub num_traces: u32,
 }
 

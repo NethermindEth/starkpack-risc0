@@ -67,6 +67,9 @@ where
     pub fn execute(&mut self, iop: &mut WriteIOP<F>) {
         iop.write_field_elem_slice(&self.exec.io.as_slice());
     }
+   /// All traces included in the STARKPack must be of equal length. 
+   /// Therefore, to avoid duplicating po2s, 
+   /// we only record the last power of two in the IO buffer."
     pub fn execute_last(&mut self, iop: &mut WriteIOP<F>) {
         iop.write_field_elem_slice(&self.exec.io.as_slice());
         iop.write_u32_slice(&[self.exec.po2 as u32]);

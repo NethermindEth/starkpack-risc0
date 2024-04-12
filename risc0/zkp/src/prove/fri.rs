@@ -109,10 +109,8 @@ pub fn fri_prove<H: Hal, F>(
     // Dump final polynomial + commit
     final_coeffs.view(|view| {
         iop.write_field_elem_slice::<H::Elem>(view);
-        //println!("prover view{:?}", view);
         let digest = hal.get_hash_suite().hashfn.hash_elem_slice(view);
         iop.commit(&digest);
-        //println!("prover digest{:?}", digest);
     });
     // Do queries
     debug!("Doing Queries");

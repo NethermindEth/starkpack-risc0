@@ -17,7 +17,6 @@ use risc0_core::field::{Elem, ExtElem, RootsOfUnity};
 
 use crate::{
     core::poly::{poly_divide, poly_interpolate},
-    // core::poly::{poly_divide, poly_interpolate},
     hal::{Buffer, CircuitHal, Hal},
     prove::{fri::fri_prove, poly_group::PolyGroup, write_iop::WriteIOP},
     taps::TapSet,
@@ -27,13 +26,14 @@ use crate::{
 /// Object to generate a zero-knowledge proof of the execution of some circuit.
 pub struct Prover<'a, H: Hal> {
     hal: &'a H,
+    //TODO: make this private
     pub taps: &'a TapSet<'a>,
     iop: WriteIOP<H::Field>,
     groups: Vec<Option<PolyGroup<H>>>,
     cycles: usize,
     po2: usize,
 }
-
+//TODO: make this private
 pub fn make_coeffs<H: Hal>(hal: &H, buf: H::Buffer<H::Elem>, count: usize) -> H::Buffer<H::Elem> {
     // Do interpolate
     hal.batch_interpolate_ntt(&buf, count);
@@ -77,6 +77,8 @@ impl<'a, H: Hal> Prover<'a, H> {
     #[tracing::instrument(skip_all)]
     pub fn commit_group(&mut self, tap_group_index: usize, bufs: Vec<H::Buffer<H::Elem>>) {
         let group_size = self.taps.group_size(tap_group_index);
+        // Since all the buffers must have the same size
+        // it is sufficient to verify the size of just the first buffer
         assert_eq!(bufs[0].size() % group_size, 0);
         assert_eq!(bufs[0].size() / group_size, self.cycles);
         assert!(
@@ -122,20 +124,23 @@ impl<'a, H: Hal> Prover<'a, H> {
         let poly_mix_vec: Vec<<H as Hal>::ExtElem> = (0..num_traces)
             .map(|_| self.iop.random_ext_elem())
             .collect();
-        let final_mix = self.iop.random_elem(); //H::ExtElem::ONE;
+        // the random coefficient to combine all the check polynomials
+        let final_mix = self.iop.random_elem(); 
         let domain = self.cycles * INV_RATE;
         let ext_size = H::ExtElem::EXT_SIZE;
 
-        // Now generate the check polynomial.
+        // Now generate the vector of the check polynomials.
         // The check polynomial is the core of the STARK: if the constraints are
         // satisfied, the check polynomial will be a low-degree polynomial. See
         // DEEP-ALI paper for details on the construction of the check_poly.
+        // All the check polynomials will be combined into one final polynomial.
 
         let check_poly_vec: Vec<<H as Hal>::Buffer<<H as Hal>::Elem>> = (0..num_traces)
             .map(|_| self.hal.alloc_elem("check_poly", ext_size * domain))
             .collect();
         let code_eval = &self.groups[1].as_ref().unwrap().evaluated_vec[0];
         for i in 0..num_traces {
+            // Combine all the groups together where the groups are the poly-groups of the accumulator, code and the data columns.
             let mut groups = Vec::new();
             groups.push(&self.groups[0].as_ref().unwrap().evaluated_vec[i]);
             groups.push(code_eval);
@@ -244,6 +249,10 @@ impl<'a, H: Hal> Prover<'a, H> {
                     let which = self.hal.copy_from_u32("which", which.as_slice());
                     let xs = self.hal.copy_from_extelem("xs", xs.as_slice());
                     let out = self.hal.alloc_extelem("out", which.size());
+                    // The code columns are stored at the index one.
+                    // Since risc0 uses universal arithmetization all the code colums of the same length are identical
+                    // This means there's no need for each trace to maintain unique code columns;
+                    // instead, all the traces will share the same set of columns.
                     if id == 1 {
                         let mut cur_poly = Vec::new();
                         pg.coeffs_vec[0].view(|cp| cur_poly = cp.to_vec());
@@ -339,6 +348,10 @@ impl<'a, H: Hal> Prover<'a, H> {
                             let which = self.hal.copy_from_u32("which", &this_which.as_slice());
                             let combo_chunk_buf =
                                 self.hal.copy_from_extelem("combo_chunk", combo_chunk);
+                            // The code columns are stored at the index one.
+                            // Since risc0 uses universal arithmetization all the code colums of the same length are identical
+                            // This means there's no need for each trace to maintain unique code columns;
+                            // instead, all the traces will share the same set of columns.
                             if id == 1 {
                                 self.hal.mix_poly_coeffs(
                                     &combo_chunk_buf,

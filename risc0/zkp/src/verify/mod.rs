@@ -171,6 +171,10 @@ where
         for index in 0..num_traces {
             let _this_tap_mix = &tap_cache.tap_mix_pows[index * taps_size..(index + 1) * taps_size];
             for (reg, cur) in zip(taps.regs(), _this_tap_mix) {
+                // The code columns are stored at the index one.
+                // Since risc0 uses universal arithmetization all the code colums of the same length are identical
+                // This means there's no need for each trace to maintain unique code columns;
+                // instead, all the traces will share the same set of columns.
                 if reg.group() == 1 {
                     tot[index * combo_count + reg.combo_id()] +=
                         *cur * rows[reg.group()][reg.offset()];
@@ -284,6 +288,7 @@ where
         // See DEEP-ALI protocol from DEEP-FRI paper for details on constraint mixing.
         let poly_mix_vec: Vec<<F as Field>::ExtElem> =
             (0..num_traces).map(|_| iop.random_ext_elem()).collect();
+        // Get the pseudorandom value which is used to combine the constraint polynomials
         let final_mix = iop.random_elem();
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("check_merkle");
@@ -322,11 +327,10 @@ where
             "Miscalculated capacity for eval_us"
         );
 
-        // Compute the core constraint polynomial.
+        // Compute the vector of the core constraint polynomials.
         // I.e. the set of all constraints mixed by poly_mix
         #[cfg(not(target_os = "zkvm"))]
         log::debug!("> compute_polynomial");
-        // let result = self.compute_polynomial(&eval_u, poly_mix);
         let mut result_vec: Vec<<F as Field>::ExtElem> = Vec::new();
         for index in 0..num_traces {
             result_vec.push(
@@ -372,6 +376,7 @@ where
         check *= (F::ExtElem::from_subfield(&three) * z).pow(size) - F::ExtElem::ONE;
         // log::debug!("Check = {check:?}");
         let mut final_result = F::ExtElem::default();
+        // Combine all the results into the final result using the powers of the final_mix random coefficient.
         for index in 0..num_traces {
             final_result += result_vec[index] * final_mix.pow(index);
         }
@@ -396,8 +401,6 @@ where
         for index in 0..num_traces {
             for reg in taps.regs() {
                 for i in 0..reg.size() {
-                    // combo_u[index * (taps.combo_begin[reg.combo_id()] as usize) + i] +=
-                    //     cur_mix * coeff_u[cur_pos + i];
                     combo_u[index * taps.tot_combo_backs
                         + (taps.combo_begin[reg.combo_id()] as usize)
                         + i] += cur_mix * coeff_u[cur_pos + i];

@@ -78,10 +78,10 @@ pub trait ProverServer {
         self.prove(envs, ctx, image)
     }
 
-    /// Prove the specified [Session].
+    /// Prove the specified [PackSession].
     fn prove_session(&self, ctx: &VerifierContext, pack_session: PackSession) -> Result<Receipt>;
 
-    /// Prove the specified [Segment].
+    /// Prove the specified [VecSegment].
     fn prove_segment(
         &self,
         ctx: &VerifierContext,

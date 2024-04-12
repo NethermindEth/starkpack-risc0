@@ -302,7 +302,7 @@ pub struct SegmentReceipt {
     /// Name of the hash function used to create this receipt.
     pub hashfn: String,
 
-    /// Number of executions
+    /// Number of the traces in the STARKPack
     pub num_traces: u32,
 }
 
