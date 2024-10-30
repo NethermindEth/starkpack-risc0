@@ -47,6 +47,11 @@ emulates a small [RISC-V] computer, allowing it to run arbitrary code in any
 language, so long as a compiler toolchain exists that targets RISC-V. Currently,
 SDK support exists for Rust, C, and C++.
 
+StarkPack is a protocol design for aggregating proofs from multiple zkVMs in a
+single proof using RISC Zero's zk-STARKs.
+The following code is modified to use StarkPack under the following paper:
+[On amortization techniques for FRI-based SNARKs](https://eprint.iacr.org/2024/661)
+
 ## Protocol overview and terminology
 
 First, the code to be proven must be compiled from its implementation language

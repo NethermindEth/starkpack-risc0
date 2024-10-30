@@ -18,12 +18,9 @@ use hello_world::multiply;
 use hello_world_methods::MULTIPLY_ID;
 
 fn main() {
-    // Pick two numbers
     let pairs_to_multiply: Vec<(u64, u64)> = vec![(2, 3), (3, 4), (4, 5), (5, 6)];
     let (receipt, _) = multiply(pairs_to_multiply);
-    // Here is where one would send 'receipt' over the network...
 
-    // Verify receipt, panic if it's wrong
     receipt.verify(MULTIPLY_ID).expect(
         "Code you have proven should successfully verify; did you specify the correct image ID?",
     );
