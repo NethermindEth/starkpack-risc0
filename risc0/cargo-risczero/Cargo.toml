@@ -19,7 +19,7 @@ cargo-generate = "0.18"
 cargo_metadata = "0.17"
 clap = { version = "4", features = ["derive"] }
 const_format = "0.2"
-dirs = "5.0"
+dirs = "6.0"
 docker-generate = "0.1"
 flate2 = "1"
 fs2 = "0.4"
